@@ -1,2 +1,1 @@
-# ALEXA-MINI
-ALEXA-MINI BOT 🫂💚🧸
+# Astrix-main
