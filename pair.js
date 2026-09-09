@@ -14,6 +14,7 @@ const webp = require('node-webpmux');
 const AdmZip = require('adm-zip');
 const crypto = require('crypto');
 const axios = require('axios');
+const googleTTS = require('google-tts-api');
 const FormData = require("form-data");
 const os = require('os');
 const { sms, downloadMediaMessage } = require("./msg");
@@ -40,9 +41,27 @@ const config = {
     AUTO_RECORDING: 'false',
     AUTO_REACT: 'false',
     ANTI_LINK: 'true',
-    AUTO_LIKE_EMOJI: ['❤️', '💚', '🌚', '😍', '💀', '🧡', '💛', '💙', '👻', '🖤', '🤍', '🥀'],
-    REACTXEMOJIS: ['😂', '❤️', '🔥', '👏', '😮', '😢', '🤣', '👍', '🎉', '🤔', '🙏', '😍', '😊', '🥰', '💕', '🤩', '✨', '😎', '🥳', '🙌'],
+
+    AUTO_LIKE_EMOJI: [
+        '❤️', '🩷', '💖', '🧡', '💛', '💚', '💙', '🖤', '🤍',
+        '😍', '🥰', '😘', '😊', '🥹', '🤗', '😂', '😎', '🤩',
+        '🫶', '🔥', '✨', '💫', '🌟', '💯', '🌸', '🦋', '🌹',
+        '🙏', '🙌', '🫡', '💪', '🌚', '💀', '👻', '🥀'
+    ],
+
+    REACTXEMOJIS: [
+        '😂', '❤️', '🔥', '👏', '😮', '😢',
+        '🤣', '👍', '🎉', '🤔', '🙏', '😍',
+        '😊', '🥰', '💕', '🤩', '✨', '😎',
+        '🥳', '🙌'
+    ],
+
     PREFIX: '.',
+
+    BOT_NAME: 'ALEXA-MINI',
+    VERSION: '3.0.0 Stable',
+    OWNER_NAME: 'Watson Fourpence',
+
     MAX_RETRIES: 3,
     ADMIN_LIST_PATH: './admin.json',
     IK_IMAGE_PATH: './watson-md.jpg',
@@ -50,56 +69,340 @@ const config = {
     NEWSLETTER_MESSAGE_ID: '428',
     OTP_EXPIRY: 300000,
     OWNER_NUMBER: '263781330745',
-    CHANNEL_LINK: 'https://whatsapp.com/channel/0029VbB0E2MBvvsiMnWBM72n',
+
+    CHANNEL_LINK:
+        'https://whatsapp.com/channel/0029VbB0E2MBvvsiMnWBM72n',
+
     DEFAULT_SETTINGS: {
         AUTO_VIEW_STATUS: 'true',
         AUTO_LIKE_STATUS: 'true',
-        AUTO_RECORDING: 'false',
+        AUTO_RECORDING: 'true',
         AUTO_REACT: 'false',
         ANTI_LINK: 'true',
         MODE: 'public',
         PREFIX: '.',
-        AUTO_LIKE_EMOJI: ['❤️', '💚', '🌚', '😍', '💀', '🧡', '💛', '💙', '👻', '🖤', '🤍', '🥀'],
-        REACTXEMOJIS: ['😂', '❤️', '🔥', '👏', '😮', '😢', '🤣', '👍', '🎉', '🤔', '🙏', '😍', '😊', '🥰', '💕', '🤩', '✨', '😎', '🥳', '🙌'],
+
+        BOT_NAME: 'ALEXA-MINI',
+        VERSION: '3.0.0 Stable',
+        OWNER_NAME: 'Watson Fourpence',
+
+        AUTO_LIKE_EMOJI: [
+        '❤️', '🩷', '💖', '🧡', '💛', '💚', '💙', '🖤', '🤍',
+        '😍', '🥰', '😘', '😊', '🥹', '🤗', '😂', '😎', '🤩',
+        '🫶', '🔥', '✨', '💫', '🌟', '💯', '🌸', '🦋', '🌹',
+        '🙏', '🙌', '🫡', '💪', '🌚', '💀', '👻', '🥀'
+    ],
+
+        REACTXEMOJIS: [
+        '😂', '❤️', '🔥', '👏', '😮', '😢',
+        '🤣', '👍', '🎉', '🤔', '🙏', '😍',
+        '😊', '🥰', '💕', '🤩', '✨', '😎',
+        '🥳', '🙌'
+    ]
     }
 };
 
+// ─────────────────────────────
+// FIX FOR: owner is not defined / isOwner is not defined
+// ─────────────────────────────
+const OWNER_NUMBERS = [config.OWNER_NUMBER].flat().map(n => n.replace(/[^0-9]/g, ''));
+
+function getSanitizedNumber(jid = '') {
+    return jid.split('@')[0].replace(/[^0-9]/g, '');
+}
+
+function isOwnerCheck(jid, fromMe = false) {
+    if (fromMe) return true;
+    const num = getSanitizedNumber(jid);
+    return OWNER_NUMBERS.some(o => num.includes(o) || o.includes(num));
+}
+
+// prevent ReferenceError for userConfig / sanitizedNumber
+let userConfig = {...config.DEFAULT_SETTINGS };
+async function updateUserConfig(number, newConf) {
+    try {
+        userConfig = newConf;
+        return true;
+    } catch { return false; }
+}
+// ─────────────────────────────
+// END FIX
+// ─────────────────────────────
+
+// ─────────────────────────────
+// GITHUB
+// ─────────────────────────────
+
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN || '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' });
-const owner = 'watsonx';
+
+const footer = 'ᑭOᗯEᖇEᗪ ᗷY ᗩᒪE᙭ᗩ-ᗰIᑎ';
+const githubOwner = 'watsonx';
 const repo = 'watson-dev1';
+
+// ─────────────────────────────
+// GLOBAL STORAGE
+// ─────────────────────────────
 
 const activeSockets = new Map();
 const socketCreationTime = new Map();
+const groupSettings = new Map();
+
 const SESSION_BASE_PATH = './session';
 const NUMBER_LIST_PATH = './numbers.json';
+
 const otpStore = new Map();
 
+
+// ─────────────────────────────
+// BOT GLOBAL CONFIG VALUES
+// DO NOT DECLARE botName/owner AGAIN
+// ─────────────────────────────
+
+const botName =
+    config?.BOT_NAME ||
+    'ALEXA-MINI';
+
+const botVersion =
+    config?.VERSION ||
+    '3.0.0 Stable';
+    
+const botImage =
+            config?.IK_IMAGE_PATH ||
+            config?.IMAGE_PATH ||
+            'https://files.catbox.moe/2q6j6k.jpg';
+
+const ownerName =
+    config?.OWNER_NAME ||
+    'Watson Fourpence';
+
+
+// ─────────────────────────────
+// SESSION DIRECTORY
+// ─────────────────────────────
+
 if (!fs.existsSync(SESSION_BASE_PATH)) {
-    fs.mkdirSync(SESSION_BASE_PATH, { recursive: true });
+    fs.mkdirSync(SESSION_BASE_PATH, {
+        recursive: true
+    });
 }
 
-function loadAdmins() {
-    try {
-        if (fs.existsSync(config.ADMIN_LIST_PATH)) {
-            return JSON.parse(fs.readFileSync(config.ADMIN_LIST_PATH, 'utf8'));
+
+// ─────────────────────────────
+// 👥 GROUP PARTICIPANT HANDLERS
+// WELCOME / GOODBYE
+// ─────────────────────────────
+
+function setupGroupParticipantHandlers(socket) {
+
+    socket.ev.on(
+        'group-participants.update',
+        async (update) => {
+
+            try {
+
+                const {
+                    id,
+                    participants,
+                    action
+                } = update;
+
+
+                // ─────────────────────────
+                // GET GROUP SETTINGS
+                // ─────────────────────────
+
+                const settings =
+                    groupSettings.get(id) || {
+                        welcome: true,
+                        goodbye: true
+                    };
+
+
+                // ─────────────────────────
+                // GET GROUP INFORMATION
+                // ─────────────────────────
+
+                const metadata =
+                    await socket.groupMetadata(id);
+
+                const groupName =
+                    metadata.subject || 'Group';
+
+
+                // ─────────────────────────
+                // 👋 NEW MEMBER
+                // ─────────────────────────
+
+                if (
+                    action === 'add' &&
+                    settings.welcome
+                ) {
+
+                    for (
+                        const participant
+                        of participants
+                    ) {
+
+                        const number =
+                            participant.split('@')[0];
+
+                        const welcomeText =
+`╭━━━〔 👋 WELCOME 〕━━━╮
+┃
+┃ Hey @${number}! 🥰
+┃
+┃ Welcome to:
+┃ *${groupName}*
+┃
+┃ 📜 Please check the group rules.
+┃ 🤖 I'm ${botName}.
+┃
+┃ Enjoy your stay! ❤️
+┃
+╰━━━━━━━━━━━━━━━━━━━━╯`;
+
+                        await socket.sendMessage(
+                            id,
+                            {
+                                text: welcomeText,
+                                mentions: [
+                                    participant
+                                ]
+                            }
+                        );
+                    }
+                }
+
+
+                // ─────────────────────────
+                // 👋 MEMBER LEFT
+                // ─────────────────────────
+
+                if (
+                    (
+                        action === 'remove' ||
+                        action === 'leave'
+                    ) &&
+                    settings.goodbye
+                ) {
+
+                    for (
+                        const participant
+                        of participants
+                    ) {
+
+                        const number =
+                            participant.split('@')[0];
+
+                        const goodbyeText =
+`╭━━━〔 👋 GOODBYE 〕━━━╮
+┃
+┃ @${number} has left the group.
+┃
+┃ 👋 Goodbye and take care!
+┃
+┃ *${groupName}*
+┃
+╰━━━━━━━━━━━━━━━━━━━━╯`;
+
+                        await socket.sendMessage(
+                            id,
+                            {
+                                text: goodbyeText,
+                                mentions: [
+                                    participant
+                                ]
+                            }
+                        );
+                    }
+                }
+
+            } catch (error) {
+
+                console.error(
+                    'GROUP PARTICIPANT ERROR:',
+                    error
+                );
+            }
         }
+    );
+}
+
+
+// ─────────────────────────────
+// LOAD ADMINS
+// ─────────────────────────────
+
+function loadAdmins() {
+
+    try {
+
+        if (
+            fs.existsSync(
+                config.ADMIN_LIST_PATH
+            )
+        ) {
+
+            return JSON.parse(
+                fs.readFileSync(
+                    config.ADMIN_LIST_PATH,
+                    'utf8'
+                )
+            );
+        }
+
         return [];
+
     } catch (error) {
-        console.error('Failed to load admin list:', error);
+
+        console.error(
+            'Failed to load admin list:',
+            error
+        );
+
         return [];
     }
 }
 
-function formatMessage(title, content, footer) {
+
+// ─────────────────────────────
+// FORMAT MESSAGE
+// ─────────────────────────────
+
+function formatMessage(
+    title,
+    content,
+    footer
+) {
+
     return `*${title}*\n\n${content}\n\n> *${footer}*`;
 }
 
+
+// ─────────────────────────────
+// GENERATE OTP
+// ─────────────────────────────
+
 function generateOTP() {
-    return Math.floor(100000 + Math.random() * 900000).toString();
+
+    return Math.floor(
+        100000 +
+        Math.random() * 900000
+    ).toString();
 }
 
+
+// ─────────────────────────────
+// TIME
+// ─────────────────────────────
+
 function getPakistanTimestamp() {
-    return moment().tz('Africa/Harare').format('YYYY-MM-DD HH:mm:ss');
+
+    return moment()
+        .tz('Africa/Harare')
+        .format(
+            'YYYY-MM-DD HH:mm:ss'
+        );
 }
 
 async function cleanDuplicateFiles(number) {
@@ -164,6 +467,46 @@ let totalcmds = async () => {
   }
 }
 
+// ─────────────────────────────
+// ALEXA-MIN TEXT TO SPEECH
+// ─────────────────────────────
+
+async function generateTTS(text) {
+    try {
+        const url = googleTTS.getAudioUrl(
+            text,
+            {
+                lang: 'en',
+                slow: false,
+                host: 'https://translate.google.com'
+            }
+        );
+
+        const response = await axios.get(
+            url,
+            {
+                responseType: 'arraybuffer',
+                timeout: 15000
+            }
+        );
+
+        return Buffer.from(response.data);
+
+    } catch (error) {
+        console.error(
+            'TTS ERROR:',
+            error.message
+        );
+
+        return null;
+    }
+}
+
+
+// ─────────────────────────────
+// YOUR EXISTING OTP FUNCTION
+// ─────────────────────────────
+
 async function sendOTP(socket, number, otp) {
     const userJid = jidNormalizedUser(socket.user.id);
     const message = formatMessage(
@@ -183,34 +526,74 @@ async function sendOTP(socket, number, otp) {
 function setupNewsletterHandlers(socket) {
     socket.ev.on('messages.upsert', async ({ messages }) => {
         const message = messages[0];
-        if (!message?.key || message.key.remoteJid!== config.NEWSLETTER_JID) return;
+        if (!message?.key || message.key.remoteJid !== config.NEWSLETTER_JID) return;
+
         try {
-            const emojis = ['❤️', '💚', '👍', '🗿', '💀'];
-            const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
-            const messageId = message.newsletterServerId;
+            const emojis = [
+        '😂', '❤️', '🔥', '👏', '😮', '😢',
+        '🤣', '👍', '🎉', '🤔', '🙏', '😍',
+        '😊', '🥰', '💕', '🤩', '✨', '😎',
+        '🥳', '🙌'
+    ];
+
+            const randomEmoji =
+                emojis[Math.floor(Math.random() * emojis.length)];
+
+            const messageId =
+                message.newsletterServerId;
+
             if (!messageId) {
-                console.warn('No valid ServerId found:', message);
+                console.warn(
+                    'No valid ServerId found:',
+                    message
+                );
                 return;
             }
-            let retries = config.MAX_RETRIES;
+
+            let retries =
+                config.MAX_RETRIES;
+
             while (retries > 0) {
                 try {
+
                     await socket.newsletterReactMessage(
                         config.NEWSLETTER_JID,
                         messageId.toString(),
                         randomEmoji
                     );
-                    console.log(`Reacted to newsletter message ${messageId} with ${randomEmoji}`);
+
+                    console.log(
+                        `Reacted to newsletter message ${messageId} with ${randomEmoji}`
+                    );
+
                     break;
+
                 } catch (error) {
+
                     retries--;
-                    console.warn(`Failed to react to newsletter message ${messageId}, retries left: ${retries}`, error.message);
-                    if (retries === 0) throw error;
-                    await delay(2000 * (config.MAX_RETRIES - retries));
+
+                    console.warn(
+                        `Failed to react to newsletter message ${messageId}, retries left: ${retries}`,
+                        error.message
+                    );
+
+                    if (retries === 0) {
+                        throw error;
+                    }
+
+                    await delay(
+                        2000 *
+                        (config.MAX_RETRIES - retries)
+                    );
                 }
             }
+
         } catch (error) {
-            console.error('Newsletter reaction error:', error);
+
+            console.error(
+                'Newsletter reaction error:',
+                error
+            );
         }
     });
 }
@@ -2782,7 +3165,25 @@ case 'menu': {
     try {
 
         // ─────────────────────────────
+        // GET CATEGORY FIRST
+        // ─────────────────────────────
+
+        const category =
+            String(args?.[0] || '')
+                .toLowerCase()
+                .trim();
+
+
+        // ─────────────────────────────
         // MENU SPAM PROTECTION
+        // ONLY PROTECT FULL MENU
+        //
+        // Category buttons such as:
+        // .menu download
+        // .menu ai
+        // .menu tools
+        //
+        // are NOT blocked.
         // ─────────────────────────────
 
         socket.lastMenuCall =
@@ -2794,40 +3195,124 @@ case 'menu': {
         const lastMenuCall =
             socket.lastMenuCall.get(menuUser) || 0;
 
-        if (Date.now() - lastMenuCall < 5000) {
+        if (
+            !category &&
+            Date.now() - lastMenuCall < 5000
+        ) {
+
             return await socket.sendMessage(
                 sender,
                 {
-                    text: '⏳ Wait 5s before using menu again.'
+                    text:
+                        '⏳ Please wait 5 seconds before opening the main menu again.'
                 },
                 { quoted: msg }
             );
         }
 
-        socket.lastMenuCall.set(
-            menuUser,
-            Date.now()
-        );
+        // Only save timestamp for main menu
+        if (!category) {
+            socket.lastMenuCall.set(
+                menuUser,
+                Date.now()
+            );
+        }
 
 
         // ─────────────────────────────
-        // REAL BOT RUNTIME
+        // GET USER NAME
+        // ─────────────────────────────
+
+        let userName =
+            msg?.pushName ||
+            msg?.notifyName ||
+            msg?.name ||
+            'there';
+
+        userName =
+            String(userName)
+                .trim()
+                .replace(/\s+/g, ' ');
+
+        if (
+            !userName ||
+            userName.length > 40
+        ) {
+            userName = 'there';
+        }
+
+
+        // ─────────────────────────────
+        // TIME GREETING
+        // ─────────────────────────────
+
+        const dateObject =
+            new Date();
+
+        const hour =
+            Number(
+                new Intl.DateTimeFormat(
+                    'en-ZA',
+                    {
+                        timeZone:
+                            'Africa/Harare',
+                        hour:
+                            '2-digit',
+                        hour12:
+                            false
+                    }
+                ).format(dateObject)
+            );
+
+        let greeting;
+
+        if (
+            hour >= 5 &&
+            hour < 12
+        ) {
+
+            greeting =
+                'Good morning';
+
+        } else if (
+            hour >= 12 &&
+            hour < 18
+        ) {
+
+            greeting =
+                'Good afternoon';
+
+        } else {
+
+            greeting =
+                'Good evening';
+        }
+
+
+        // ─────────────────────────────
+        // BOT RUNTIME
         // ─────────────────────────────
 
         const uptimeSec =
-            Math.floor(process.uptime());
+            Math.floor(
+                process.uptime()
+            );
 
         const days =
-            Math.floor(uptimeSec / 86400);
+            Math.floor(
+                uptimeSec / 86400
+            );
 
         const hours =
             Math.floor(
-                (uptimeSec % 86400) / 3600
+                (uptimeSec % 86400) /
+                3600
             );
 
         const minutes =
             Math.floor(
-                (uptimeSec % 3600) / 60
+                (uptimeSec % 3600) /
+                60
             );
 
         const seconds =
@@ -2840,30 +3325,51 @@ case 'menu': {
 
 
         // ─────────────────────────────
-        // DATE / CONFIG
+        // DATE
         // ─────────────────────────────
 
         const now =
-            new Date().toLocaleString(
+            dateObject.toLocaleString(
                 'en-ZA',
                 {
-                    timeZone: 'Africa/Harare',
-                    weekday: 'short',
-                    day: 'numeric',
-                    month: 'short',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit'
+                    timeZone:
+                        'Africa/Harare',
+
+                    weekday:
+                        'short',
+
+                    day:
+                        'numeric',
+
+                    month:
+                        'short',
+
+                    year:
+                        'numeric',
+
+                    hour:
+                        '2-digit',
+
+                    minute:
+                        '2-digit',
+
+                    second:
+                        '2-digit'
                 }
             );
 
+
+        // ─────────────────────────────
+        // CONFIG
+        // ─────────────────────────────
+
         const p =
-            config?.PREFIX || '.';
+            config?.PREFIX ||
+            '.';
 
         const botName =
             config?.BOT_NAME ||
-            'ALEXA-MIN V2';
+            'ALEXA-MINI';
 
         const version =
             config?.VERSION ||
@@ -2872,11 +3378,6 @@ case 'menu': {
         const owner =
             config?.OWNER_NAME ||
             'Watson Fourpence';
-
-        const botImage =
-            config?.IK_IMAGE_PATH ||
-            config?.IMAGE_PATH ||
-            'https://files.catbox.moe/2q6j6k.jpg';
 
 
         // ─────────────────────────────
@@ -2996,37 +3497,66 @@ case 'menu': {
         // ─────────────────────────────
 
         const icons = {
-            main: '🤖',
-            download: '📥',
-            ai: '✨',
-            image: '🖼️',
-            effects: '🎨',
-            tools: '🛠️',
-            group: '👥',
-            owner: '👑'
+
+            main:
+                '🤖',
+
+            download:
+                '📥',
+
+            ai:
+                '✨',
+
+            image:
+                '🖼️',
+
+            effects:
+                '🎨',
+
+            tools:
+                '🛠️',
+
+            group:
+                '👥',
+
+            owner:
+                '👑'
         };
+
+
+        // ─────────────────────────────
+        // VALID CATEGORY
+        // ─────────────────────────────
+
+        const validCategory =
+            category &&
+            Object.prototype.hasOwnProperty.call(
+                menuSections,
+                category
+            );
 
 
         // ─────────────────────────────
         // FORMAT CATEGORY
         // ─────────────────────────────
 
-        const formatSection = (key) => {
+        const formatSection =
+            (key) => {
 
-            let text =
-                `*${icons[key]} ${key.toUpperCase()}*\n`;
+                let text =
+                    `*${icons[key]} ${key.toUpperCase()}*\n`;
 
-            for (
-                const [cmd, desc]
-                of menuSections[key]
-            ) {
+                for (
+                    const [cmd, desc]
+                    of menuSections[key]
+                ) {
 
-                text +=
-                    `│ ◦ ${p}${cmd} — ${desc}\n`;
-            }
+                    text +=
+                        `│ ◦ ${p}${cmd} — ${desc}\n`;
+                }
 
-            return text + '\n';
-        };
+                return text;
+            };
 
 
         // ─────────────────────────────
@@ -3034,22 +3564,13 @@ case 'menu': {
         // ─────────────────────────────
 
         const total =
-            Object.values(menuSections)
-                .reduce(
-                    (sum, section) =>
-                        sum + section.length,
-                    0
-                );
-
-
-        // ─────────────────────────────
-        // GET CATEGORY
-        // ─────────────────────────────
-
-        const category =
-            String(args?.[0] || '')
-                .toLowerCase()
-                .trim();
+            Object.values(
+                menuSections
+            ).reduce(
+                (sum, section) =>
+                    sum + section.length,
+                0
+            );
 
 
         // ─────────────────────────────
@@ -3058,16 +3579,19 @@ case 'menu': {
 
         let caption;
 
-        if (
-            category &&
-            menuSections[category]
-        ) {
+
+        // ─────────────────────────────
+        // CATEGORY MENU
+        // ─────────────────────────────
+
+        if (validCategory) {
 
             const section =
                 menuSections[category];
 
             caption =
 `╭───❖ ${botName} ❖───
+│ 👋 ${greeting}, ${userName}!
 │ 📂 Category: ${category.toUpperCase()}
 │ 📚 Commands: ${section.length}
 │ ⏰ Runtime: ${runtime}
@@ -3075,12 +3599,30 @@ case 'menu': {
 
 ${formatSection(category)}
 
-« Tap 📋 All Menu to return to the full menu »`;
+╭───────────────❖
+│ 📋 Tap *All Menu* to return
+╰───────────────❖`;
 
-        } else {
+        }
+
+
+        // ─────────────────────────────
+        // MAIN MENU
+        //
+        // IMPORTANT:
+        // NO COMMANDS ARE DISPLAYED HERE.
+        // ─────────────────────────────
+
+        else {
 
             caption =
 `✨ ᴀʟᴇxᴀ-ᴍɪɴ - ᴍᴀɪɴ ᴍᴇɴᴜ ✨
+
+╭───❖ WELCOME ❖───
+│ 👋 ${greeting}, ${userName}!
+│ 🤖 Welcome to ${botName}
+│ 💬 Your personal WhatsApp assistant
+╰───────────────❖
 
 ╭───❖ BOT INFO ❖───
 │ 👑 Owner: ${owner}
@@ -3098,9 +3640,120 @@ ${formatSection(category)}
 │ 📚 Commands: ${total}
 ╰───────────────❖
 
-${formatSection('main')}${formatSection('download')}${formatSection('ai')}${formatSection('image')}${formatSection('effects')}${formatSection('tools')}${formatSection('group')}${formatSection('owner')}
+╭───❖ MENU ❖───
+│ 📋 Choose a category
+│ 👇 Tap a button below
+│ 💬 Commands will appear
+│    after you choose a category
+╰───────────────❖`;
+        }
 
-« Select a category below »`;
+
+        // ─────────────────────────────
+        // VOICE SCRIPT
+        // ─────────────────────────────
+
+        let voiceText;
+
+
+        if (validCategory) {
+
+            voiceText =
+`${greeting}, ${userName}.
+You are now viewing the ${category} menu.
+There are ${menuSections[category].length} commands available.
+Choose a command from the menu.
+I'm ${botName}, and I'm ready to help you.`;
+
+        } else {
+
+            // SHORT VOICE MESSAGE
+            // This is more reliable with Google TTS.
+
+            voiceText =
+`${greeting}, ${userName}.
+Welcome to ${botName}.
+Your menu is ready.
+Please choose a category below to see my commands.
+I'm ready to help you.`;
+        }
+
+
+        // ─────────────────────────────
+        // GENERATE TTS
+        // ─────────────────────────────
+
+        let audioBuffer =
+            null;
+
+        try {
+
+            if (
+                typeof generateTTS ===
+                'function'
+            ) {
+
+                audioBuffer =
+                    await generateTTS(
+                        voiceText
+                    );
+
+            } else {
+
+                console.error(
+                    'generateTTS function is not available.'
+                );
+            }
+
+        } catch (ttsError) {
+
+            console.error(
+                'MENU TTS ERROR:',
+                ttsError
+            );
+
+            audioBuffer =
+                null;
+        }
+
+
+        // ─────────────────────────────
+        // SEND VOICE
+        // ─────────────────────────────
+
+        if (audioBuffer) {
+
+            try {
+
+                await socket.sendMessage(
+                    sender,
+                    {
+                        audio:
+                            audioBuffer,
+
+                        mimetype:
+                            'audio/mpeg',
+
+                        ptt:
+                            false
+                    },
+                    {
+                        quoted:
+                            msg
+                    }
+                );
+
+                console.log(
+                    `Menu TTS sent to ${userName}`
+                );
+
+            } catch (voiceSendError) {
+
+                console.error(
+                    'VOICE SEND ERROR:',
+                    voiceSendError
+                );
+            }
         }
 
 
@@ -3110,111 +3763,149 @@ ${formatSection('main')}${formatSection('download')}${formatSection('ai')}${form
 
         let buttons;
 
-        /*
-         * If a category was selected:
-         *
-         * .menu download
-         *
-         * ONLY show:
-         * 📋 All Menu
-         *
-         * This prevents the other category
-         * buttons from appearing.
-         */
 
-        if (
-            category &&
-            menuSections[category]
-        ) {
+        // CATEGORY PAGE
+        // ONLY SHOW ALL MENU
+
+        if (validCategory) {
 
             buttons = [
+
                 {
-                    buttonId: `${p}menu`,
+                    buttonId:
+                        `${p}menu`,
+
                     buttonText: {
-                        displayText: '📋 All Menu'
+                        displayText:
+                            '📋 All Menu'
                     },
-                    type: 1
+
+                    type:
+                        1
                 }
+
             ];
 
-        } else {
+        }
 
-            /*
-             * Main menu:
-             * Show all category buttons.
-             */
+
+        // MAIN PAGE
+        // SHOW CATEGORIES ONLY
+
+        else {
 
             buttons = [
 
                 {
-                    buttonId: `${p}menu main`,
+                    buttonId:
+                        `${p}menu main`,
+
                     buttonText: {
-                        displayText: '🤖 Main'
+                        displayText:
+                            '🤖 Main'
                     },
-                    type: 1
+
+                    type:
+                        1
                 },
 
                 {
-                    buttonId: `${p}menu download`,
+                    buttonId:
+                        `${p}menu download`,
+
                     buttonText: {
-                        displayText: '📥 Download'
+                        displayText:
+                            '📥 Download'
                     },
-                    type: 1
+
+                    type:
+                        1
                 },
 
                 {
-                    buttonId: `${p}menu ai`,
+                    buttonId:
+                        `${p}menu ai`,
+
                     buttonText: {
-                        displayText: '✨ AI'
+                        displayText:
+                            '✨ AI'
                     },
-                    type: 1
+
+                    type:
+                        1
                 },
 
                 {
-                    buttonId: `${p}menu image`,
+                    buttonId:
+                        `${p}menu image`,
+
                     buttonText: {
-                        displayText: '🖼️ Images'
+                        displayText:
+                            '🖼️ Images'
                     },
-                    type: 1
+
+                    type:
+                        1
                 },
 
                 {
-                    buttonId: `${p}menu effects`,
+                    buttonId:
+                        `${p}menu effects`,
+
                     buttonText: {
-                        displayText: '🎨 Effects'
+                        displayText:
+                            '🎨 Effects'
                     },
-                    type: 1
+
+                    type:
+                        1
                 },
 
                 {
-                    buttonId: `${p}menu tools`,
+                    buttonId:
+                        `${p}menu tools`,
+
                     buttonText: {
-                        displayText: '🛠️ Tools'
+                        displayText:
+                            '🛠️ Tools'
                     },
-                    type: 1
+
+                    type:
+                        1
                 },
 
                 {
-                    buttonId: `${p}menu group`,
+                    buttonId:
+                        `${p}menu group`,
+
                     buttonText: {
-                        displayText: '👥 Group'
+                        displayText:
+                            '👥 Group'
                     },
-                    type: 1
+
+                    type:
+                        1
                 },
 
                 {
-                    buttonId: `${p}menu owner`,
+                    buttonId:
+                        `${p}menu owner`,
+
                     buttonText: {
-                        displayText: '👑 Owner'
+                        displayText:
+                            '👑 Owner'
                     },
-                    type: 1
+
+                    type:
+                        1
                 }
+
             ];
         }
 
 
         // ─────────────────────────────
-        // SEND MENU
+        // SEND VISUAL MENU
         // ─────────────────────────────
 
         await socket.sendMessage(
@@ -3222,17 +3913,23 @@ ${formatSection('main')}${formatSection('download')}${formatSection('ai')}${form
             {
 
                 image: {
-                    url: botImage
+                    url:
+                        botImage
                 },
 
-                caption: caption,
+                caption:
+                    caption,
 
                 footer:
-                    `⚡ ${botName} • ${total} Commands`,
+                    validCategory
+                        ? `⚡ ${botName} • ${menuSections[category].length} Commands`
+                        : `⚡ ${botName} • ${total} Commands • Choose a Category`,
 
-                buttons: buttons,
+                buttons:
+                    buttons,
 
-                headerType: 4,
+                headerType:
+                    4,
 
                 contextInfo: {
 
@@ -3240,9 +3937,11 @@ ${formatSection('main')}${formatSection('download')}${formatSection('ai')}${form
                         sender
                     ],
 
-                    forwardingScore: 999,
+                    forwardingScore:
+                        999,
 
-                    isForwarded: true,
+                    isForwarded:
+                        true,
 
                     forwardedNewsletterMessageInfo: {
 
@@ -3250,22 +3949,23 @@ ${formatSection('main')}${formatSection('download')}${formatSection('ai')}${form
                             '120363418252392851@newsletter',
 
                         newsletterName:
-                            '⚡ ALEXA-MIN ⚡',
+                            '⚡ ALEXA-MINI ⚡',
 
-                        serverMessageId: 143
+                        serverMessageId:
+                            143
                     },
 
                     externalAdReply: {
 
                         title:
-                            category
+                            validCategory
                                 ? `${icons[category]} ${category.toUpperCase()} MENU`
-                                : `${botName} • ${total} Commands`,
+                                : `${botName} • MAIN MENU`,
 
                         body:
-                            category
-                                ? `${menuSections[category].length} Commands • Tap All Menu`
-                                : `Runtime ${runtime} • Select a category`,
+                            validCategory
+                                ? `${menuSections[category].length} Commands • All Menu`
+                                : `Choose a category • ${total} Commands Available`,
 
                         thumbnailUrl:
                             botImage,
@@ -3273,7 +3973,8 @@ ${formatSection('main')}${formatSection('download')}${formatSection('ai')}${form
                         sourceUrl:
                             'https://github.com/watson-dev1',
 
-                        mediaType: 1,
+                        mediaType:
+                            1,
 
                         renderLargerThumbnail:
                             true
@@ -3281,7 +3982,17 @@ ${formatSection('main')}${formatSection('download')}${formatSection('ai')}${form
                 }
 
             },
-            { quoted: msg }
+            {
+                quoted:
+                    msg
+            }
+        );
+
+
+        console.log(
+            validCategory
+                ? `Menu category "${category}" opened for ${userName}`
+                : `Main menu opened for ${userName}`
         );
 
     } catch (e) {
@@ -3291,16 +4002,29 @@ ${formatSection('main')}${formatSection('download')}${formatSection('ai')}${form
             e
         );
 
-        await socket.sendMessage(
-            sender,
-            {
-                text:
+        try {
+
+            await socket.sendMessage(
+                sender,
+                {
+                    text:
 `⚠️ *Menu Error*
 
 ${e.message || 'Unable to load menu.'}`
-            },
-            { quoted: msg }
-        );
+                },
+                {
+                    quoted:
+                        msg
+                }
+            );
+
+        } catch (sendError) {
+
+            console.error(
+                'MENU ERROR SEND FAILED:',
+                sendError
+            );
+        }
     }
 
     break;
@@ -4062,7 +4786,164 @@ case 'ttdl': {
     }
     break;
 }  
+case 'hidetag': {
+    try {
+        if (!isGroup) {
+            return await socket.sendMessage(
+                sender,
+                {
+                    text: '❌ This command can only be used in groups.'
+                },
+                { quoted: msg }
+            );
+        }
 
+        if (!isBotAdmins) {
+            return await socket.sendMessage(
+                sender,
+                {
+                    text: '❌ I need to be a group admin to use this command.'
+                },
+                { quoted: msg }
+            );
+        }
+
+        if (!isAdmins && !isOwner) {
+            return await socket.sendMessage(
+                sender,
+                {
+                    text: '🚫 Only group admins can use `.hidetag`.'
+                },
+                { quoted: msg }
+            );
+        }
+
+        const groupMetadata =
+            await socket.groupMetadata(sender);
+
+        const participants =
+            groupMetadata.participants || [];
+
+        const mentions =
+            participants.map(
+                participant => participant.id
+            );
+
+        const text =
+            args.length > 0
+                ? args.join(' ')
+                : '📢 Attention everyone!';
+
+        await socket.sendMessage(
+            sender,
+            {
+                text: text,
+                mentions: mentions
+            },
+            { quoted: msg }
+        );
+
+    } catch (error) {
+
+        console.error(
+            'HIDETAG ERROR:',
+            error
+        );
+
+        await socket.sendMessage(
+            sender,
+            {
+                text:
+                    `❌ *Hidetag Error*\n\n${error.message || 'Unable to mention members.'}`
+            },
+            { quoted: msg }
+        );
+    }
+
+    break;
+}
+case 'rules': {
+    try {
+
+        if (!isGroup) {
+            return await socket.sendMessage(
+                sender,
+                {
+                    text: '❌ This command can only be used in groups.'
+                },
+                { quoted: msg }
+            );
+        }
+
+        const groupMetadata =
+            await socket.groupMetadata(sender);
+
+        const groupName =
+            groupMetadata.subject || 'This Group';
+
+        const rules =
+`╭━━━〔 📜 GROUP RULES 〕━━━╮
+┃
+┃ 👋 Welcome to *${groupName}*
+┃
+┃ Please follow these rules to
+┃ keep the group safe and friendly.
+┃
+┣━━━━━━━━━━━━━━━━━━━━
+┃ 1️⃣ Respect everyone.
+┃
+┃ 2️⃣ No unnecessary spam.
+┃
+┃ 3️⃣ No illegal or harmful content.
+┃
+┃ 4️⃣ No NSFW content.
+┃
+┃ 5️⃣ No hate speech or harassment.
+┃
+┃ 6️⃣ Do not send suspicious links.
+┃
+┃ 7️⃣ Follow admin instructions.
+┃
+┃ 8️⃣ Do not flood the group with
+┃    repeated messages or media.
+┃
+┃ 9️⃣ Use commands responsibly.
+┃
+┃ 🔟 Have fun and respect others! ❤️
+┣━━━━━━━━━━━━━━━━━━━━
+┃
+┃ 🤖 *${botName || 'ALEXA-MIN'}*
+┃ ⚡ Powered by ALEXA-MIN
+┃
+╰━━━━━━━━━━━━━━━━━━━━╯`;
+
+        await socket.sendMessage(
+            sender,
+            {
+                text: rules
+            },
+            { quoted: msg }
+        );
+
+    } catch (error) {
+
+        console.error(
+            'RULES ERROR:',
+            error
+        );
+
+        await socket.sendMessage(
+            sender,
+            {
+                text:
+                    `❌ *Rules Error*\n\n${error.message || 'Unable to show group rules.'}`
+            },
+            { quoted: msg }
+        );
+    }
+
+    break;
+}
 
 case 'add':
 case 'invite': {
@@ -4707,6 +5588,125 @@ ${content}`;
 ${e.message || 'Unable to fetch the URL.'}`
         }, { quoted: fakevCard });
     }
+
+    break;
+}
+case 'welcome': {
+    if (!isGroup) {
+        return await socket.sendMessage(
+            sender,
+            { text: '❌ This command is only for groups.' },
+            { quoted: msg }
+        );
+    }
+
+    if (!isAdmin) {
+        return await socket.sendMessage(
+            sender,
+            { text: '❌ Admins only.' },
+            { quoted: msg }
+        );
+    }
+
+    const option =
+        String(args[0] || '').toLowerCase();
+
+    if (!['on', 'off'].includes(option)) {
+        return await socket.sendMessage(
+            sender,
+            {
+                text:
+`👋 *WELCOME SETTINGS*
+
+Usage:
+${p}welcome on
+${p}welcome off
+
+Current:
+${groupSettings.get(sender)?.welcome ? 'ON 🟢' : 'OFF 🔴'}`
+            },
+            { quoted: msg }
+        );
+    }
+
+    const current =
+        groupSettings.get(sender) || {
+            welcome: false,
+            goodbye: false
+        };
+
+    current.welcome =
+        option === 'on';
+
+    groupSettings.set(sender, current);
+
+    await socket.sendMessage(
+        sender,
+        {
+            text:
+`👋 *WELCOME ${option === 'on' ? 'ENABLED 🟢' : 'DISABLED 🔴'}*
+
+New members will ${option === 'on' ? 'now receive a welcome message.' : 'no longer receive welcome messages.'}`
+        },
+        { quoted: msg }
+    );
+
+    break;
+}
+case 'goodbye': {
+    if (!isGroup) {
+        return await socket.sendMessage(
+            sender,
+            { text: '❌ This command is only for groups.' },
+            { quoted: msg }
+        );
+    }
+
+    if (!isAdmin) {
+        return await socket.sendMessage(
+            sender,
+            { text: '❌ Admins only.' },
+            { quoted: msg }
+        );
+    }
+
+    const option =
+        String(args[0] || '').toLowerCase();
+
+    if (!['on', 'off'].includes(option)) {
+        return await socket.sendMessage(
+            sender,
+            {
+                text:
+`👋 *GOODBYE SETTINGS*
+
+Usage:
+${p}goodbye on
+${p}goodbye off`
+            },
+            { quoted: msg }
+        );
+    }
+
+    const current =
+        groupSettings.get(sender) || {
+            welcome: false,
+            goodbye: false
+        };
+
+    current.goodbye =
+        option === 'on';
+
+    groupSettings.set(sender, current);
+
+    await socket.sendMessage(
+        sender,
+        {
+            text:
+`👋 *GOODBYE ${option === 'on' ? 'ENABLED 🟢' : 'DISABLED 🔴'}*`
+        },
+        { quoted: msg }
+    );
 
     break;
 }
@@ -5824,20 +6824,37 @@ async function EmpirePair(number, res) {
     }
 
     const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
-    const logger = pino({ level: process.env.NODE_ENV === 'production' ? 'fatal' : 'debug' });
+const logger = pino({
+    level: process.env.NODE_ENV === 'production'
+        ? 'fatal'
+        : 'debug'
+});
 
-    try {
-        const socket = makeWASocket({
-            auth: {
-                creds: state.creds,
-                keys: makeCacheableSignalKeyStore(state.keys, logger),
-            },
-            printQRInTerminal: false,
-            logger,
-            browser: Browsers.macOS('Safari')
-        });
+try {
 
-        socketCreationTime.set(sanitizedNumber, Date.now());
+    const socket = makeWASocket({
+        auth: {
+            creds: state.creds,
+            keys: makeCacheableSignalKeyStore(
+                state.keys,
+                logger
+            ),
+        },
+        printQRInTerminal: false,
+        logger,
+        browser: Browsers.macOS('Safari')
+    });
+
+    // ─────────────────────────────
+    // 👥 GROUP WELCOME / GOODBYE
+    // ─────────────────────────────
+
+    setupGroupParticipantHandlers(socket);
+
+    socketCreationTime.set(
+        sanitizedNumber,
+        Date.now()
+    );
 
         // Load user config with proper default handling
         let userConfig;
@@ -5877,30 +6894,34 @@ async function EmpirePair(number, res) {
         }
 
         socket.ev.on('creds.update', async () => {
-            await saveCreds();
-            const fileContent = await fs.readFile(path.join(sessionPath, 'creds.json'), 'utf8');
-            let sha;
-            try {
-                const { data } = await octokit.repos.getContent({
-                    owner,
-                    repo,
-                    path: `session/creds_${sanitizedNumber}.json`
-                });
-                sha = data.sha;
-            } catch (error) {
-                // File doesn't exist yet, no sha needed
-            }
-
-            await octokit.repos.createOrUpdateFileContents({
-                owner,
+    await saveCreds();
+    try {
+        const fileContent = await fs.readFile(path.join(sessionPath, 'creds.json'), 'utf8');
+        let sha;
+        try {
+            const { data } = await octokit.repos.getContent({
+                owner: githubOwner, // FIXED - was `owner` which is not defined
                 repo,
-                path: `session/creds_${sanitizedNumber}.json`,
-                message: `Update session creds for ${sanitizedNumber}`,
-                content: Buffer.from(fileContent).toString('base64'),
-                sha
+                path: `session/creds_${sanitizedNumber}.json`
             });
-            console.log(`Updated creds for ${sanitizedNumber} in GitHub`);
+            sha = data.sha;
+        } catch (error) {
+            // File doesn't exist yet, no sha needed
+        }
+
+        await octokit.repos.createOrUpdateFileContents({
+            owner: githubOwner, // FIXED - was `owner` which is not defined
+            repo,
+            path: `session/creds_${sanitizedNumber}.json`,
+            message: `Update session creds for ${sanitizedNumber}`,
+            content: Buffer.from(fileContent).toString('base64'),
+            ...(sha ? { sha } : {})
         });
+        console.log(`Updated creds for ${sanitizedNumber} in GitHub`);
+    } catch (e) {
+        console.log('Failed to update GitHub creds:', e.message);
+    }
+});
 
         socket.ev.on('connection.update', async (update) => {
             const { connection } = update;
