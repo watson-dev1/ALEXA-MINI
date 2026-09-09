@@ -32,7 +32,7 @@ app.get('/health', (req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`
 
-  ASTRIX-PRIME Server ON
+  ALEXA-MINI Server ON
   Port: ${PORT}
   URL: http://0.0.0.0:${PORT}
 ============================`)
