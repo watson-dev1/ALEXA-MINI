@@ -64,7 +64,7 @@ const config = {
     }
 };
 
-const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN || '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' });
+const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN || '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' });
 const owner = 'watsonx';
 const repo = 'watson-dev1';
 
