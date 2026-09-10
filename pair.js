@@ -965,11 +965,11 @@ case 'read': {
         await socket.sendMessage(sender, { text: `📌 Usage:.autoread on /.autoread off` }, { quoted: msg });
     }
     break;
-    }
-    case 'afk':
+}
+case 'afk':
 case 'busy':
 case 'brb':
-case 'away':
+case 'away': {
     if (!args[0]) {
         return m.reply(`*STATUS COMMAND*
 
@@ -1000,7 +1000,7 @@ case 'away':
     }
 
     return m.reply(`Invalid option. Use:.busy on <reason> or.busy off`);
-break;
+    break;
 }
 case 'statuslike':
 case 'autolike': {
@@ -1027,7 +1027,7 @@ case 'autolike': {
     }, { quoted: msg });
     break;
 }
-                case 'autoreact':
+case 'autoreact':
 case 'autoreaction':
 case 'reactauto': {
     if (!isOwner) {
@@ -1039,7 +1039,7 @@ case 'reactauto': {
 
     if (!args[0]) {
         const status = userConfig.AUTO_REACT === true || userConfig.AUTO_REACT === 'true'
-            ? 'on'
+           ? 'on'
             : 'off';
 
         await socket.sendMessage(sender, {
@@ -1064,7 +1064,7 @@ case 'reactauto': {
 
     await socket.sendMessage(sender, {
         text: userConfig.AUTO_REACT
-            ? '✅ *Aᴜᴛᴏ Rᴇᴀᴄᴛ ᴇɴᴀʙʟᴇᴅ!* ❤️\n\nThe bot will now automatically react to incoming messages.'
+           ? '✅ *Aᴜᴛᴏ Rᴇᴀᴄᴛ ᴇɴᴀʙʟᴇᴅ!* ❤️\n\nThe bot will now automatically react to incoming messages.'
             : '✅ *Aᴜᴛᴏ Rᴇᴀᴄᴛ ᴅɪsᴀʙʟᴇᴅ!* ❌\n\nThe bot will no longer automatically react to incoming messages.'
     }, { quoted: msg });
 
