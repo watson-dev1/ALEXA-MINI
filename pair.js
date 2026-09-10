@@ -1543,7 +1543,6 @@ case 'antistatus':
         return m.reply(`*🫶 Anti Status Action: WARN 🛡*\n\nBot will only warn`)
     }
 break;
-}
 case 'play':
 case 'song': {
     try {
