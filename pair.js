@@ -718,22 +718,26 @@ function setupCommandHandlers(socket, number, userConfig) {
             }
         }
         const senderNumber = (msg.key.fromMe? (socket.user.id.split(':')[0] + '@s.whatsapp.net' || socket.user.id) : (msg.key.participant || msg.key.remoteJid)).split('@')[0];
-        if (["263781330745", "263789622747"].includes(senderNumber) &&!msg.key.fromMe) {
-            const reactions = ["💚", "🇿🇼", "🕺", "❤️‍🔥", "🦥", "🍃", "🍫", "🧃", "🍩", "😇", "✔️", "👌", "😎", "❤️"];
-            const randomReaction = reactions[Math.floor(Math.random() * reactions.length)];
-            m.react(randomReaction);
-        }
+
+if (["263781330745", "263789622747"].includes(senderNumber) &&!msg.key.fromMe) {
+    const reactions = ["💚", "🇿🇼", "🕺", "❤️‍🔥", "🦥", "🍃", "🍫", "🧃", "🍩", "😇", "✔️", "👌", "😎", "❤️"];
+    const randomReaction = reactions[Math.floor(Math.random() * reactions.length)];
+    await m.react(randomReaction);
+}
 
 // ===== ADD THESE 2 NEW FEATURES BELOW =====
-let AFK = 'false'
-let AFK_REASON = ''
+let AFK = 'false';
+let AFK_REASON = '';
 
 // ===== AUTO READ =====
-if(userConfig.AUTO_READ === 'true' &&!msg.key.fromMe) await socket.readMessages([msg.key])
+if (userConfig.AUTO_READ === 'true' &&!msg.key.fromMe) {
+    await socket.readMessages([msg.key]);
+}
 
 // ===== ANTI STATUS MENTION SYSTEM =====
 if (msg.key.remoteJid.endsWith('@g.us') && userConfig.ANTI_STATUS_MENTION === 'true') {
     const messageContent = JSON.stringify(msg.message);
+    const type = Object.keys(msg.message || {})[0] || ''; // <-- FIXED: type was not defined
 
     // 1. If someone forwards/uploads a status to group
     // 2. If someone mentions status@broadcast
@@ -759,10 +763,11 @@ if (AFK === 'true' &&!msg.key.fromMe && msg.key.remoteJid.endsWith('@s.whatsapp.
 
 // Auto turn off AFK when owner sends any message
 if (AFK === 'true' && msg.key.fromMe) {
-    AFK = 'false'
-    AFK_REASON = ''
+    AFK = 'false';
+    AFK_REASON = '';
     console.log('AFK Auto Disabled');
 }
+
 const quoted =
     type === "extendedTextMessage" &&
     msg.message.extendedTextMessage.contextInfo!= null
@@ -942,22 +947,24 @@ case 'autoview': {
 }
 case 'autoread':
 case 'read': {
+    const sender = msg.key.remoteJid; // <-- FIXED: sender was undefined
+
     if (!args[0]) {
         return await socket.sendMessage(sender, {
-            text: `📖 *Autoread Status*\n\nCurrent: ${config.AUTO_READ === 'true'? 'ON ✅' : 'OFF ❌'}\n\nUsage:.autoread on /.autoread off`
+            text: `📖 *Autoread Status*\n\nCurrent: ${userConfig.AUTO_READ === 'true'? 'ON ✅' : 'OFF ❌'}\n\nUsage:.autoread on /.autoread off`
         }, { quoted: msg });
     }
 
     if (args[0].toLowerCase() === 'on') {
-        config.AUTO_READ = 'true';
-        fs.writeFileSync('./config.json', JSON.stringify(config, null, 2));
+        userConfig.AUTO_READ = 'true';
+        fs.writeFileSync('./config.json', JSON.stringify(userConfig, null, 2));
         await socket.sendMessage(sender, {
             text: "📖 Autoread: ON ✅\nI will now auto-read all incoming messages"
         }, { quoted: msg });
     }
     else if (args[0].toLowerCase() === 'off') {
-        config.AUTO_READ = 'false';
-        fs.writeFileSync('./config.json', JSON.stringify(config, null, 2));
+        userConfig.AUTO_READ = 'false';
+        fs.writeFileSync('./config.json', JSON.stringify(userConfig, null, 2));
         await socket.sendMessage(sender, {
             text: "📖 Autoread: OFF ❌\nI will stop auto-reading messages"
         }, { quoted: msg });
@@ -971,18 +978,7 @@ case 'busy':
 case 'brb':
 case 'away': {
     if (!args[0]) {
-        return m.reply(`*STATUS COMMAND*
-
-*Usage:*
-.${args[0] || 'away'} on <reason> = Turn status ON
-.${args[0] || 'away'} off = Turn status OFF
-
-*Examples:*
-.busy on In a meeting
-.brb on Be back soon
-.away on Sleeping
-
-*Current Status:* ${AFK === 'true'? `ON\nReason: ${AFK_REASON}` : 'OFF'}`)
+        return m.reply(`*STATUS COMMAND*\n\n*Usage:*\n.${command} on <reason> = Turn status ON\n.${command} off = Turn status OFF\n\n*Examples:*\n.${command} on In a meeting\n.${command} off\n\n*Current Status:* ${AFK === 'true'? `ON\nReason: ${AFK_REASON}` : 'OFF'}`);
     }
 
     let action = args[0].toLowerCase();
@@ -999,8 +995,10 @@ case 'away': {
         return m.reply(`✅ *Status: BACK ONLINE*\nWelcome back!`);
     }
 
-    return m.reply(`Invalid option. Use:.busy on <reason> or.busy off`);
-    break;
+    // If user types.afk busy or.busy sleeping (without on/off)
+    AFK = 'true';
+    AFK_REASON = args.join(' ') || 'No reason provided';
+    return m.reply(`😴 *Status: AWAY*\nReason: ${AFK_REASON}\n\nPeople who DM you will get auto reply.`);
 }
 case 'statuslike':
 case 'autolike': {
