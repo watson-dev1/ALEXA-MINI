@@ -77,7 +77,10 @@ const config = {
         AUTO_VIEW_STATUS: 'true',
         AUTO_LIKE_STATUS: 'true',
         AUTO_RECORDING: 'true',
+        ANTI_STATUS_MENTION: 'false', // default off
+        ANTI_STATUS_ACTION: 'delete', // delete | warn
         AUTO_REACT: 'false',
+        AUTO_READ: 'false',
         ANTI_LINK: 'true',
         MODE: 'public',
         PREFIX: '.',
@@ -152,7 +155,6 @@ const NUMBER_LIST_PATH = './numbers.json';
 
 const otpStore = new Map();
 
-
 // ─────────────────────────────
 // BOT GLOBAL CONFIG VALUES
 // DO NOT DECLARE botName/owner AGAIN
@@ -165,7 +167,7 @@ const botName =
 const botVersion =
     config?.VERSION ||
     '3.0.0 Stable';
-    
+
 const botImage =
             config?.IK_IMAGE_PATH ||
             config?.IMAGE_PATH ||
@@ -174,7 +176,6 @@ const botImage =
 const ownerName =
     config?.OWNER_NAME ||
     'Watson Fourpence';
-
 
 // ─────────────────────────────
 // SESSION DIRECTORY
@@ -185,7 +186,6 @@ if (!fs.existsSync(SESSION_BASE_PATH)) {
         recursive: true
     });
 }
-
 
 // ─────────────────────────────
 // 👥 GROUP PARTICIPANT HANDLERS
@@ -206,7 +206,6 @@ function setupGroupParticipantHandlers(socket) {
                     action
                 } = update;
 
-
                 // ─────────────────────────
                 // GET GROUP SETTINGS
                 // ─────────────────────────
@@ -217,7 +216,6 @@ function setupGroupParticipantHandlers(socket) {
                         goodbye: true
                     };
 
-
                 // ─────────────────────────
                 // GET GROUP INFORMATION
                 // ─────────────────────────
@@ -227,7 +225,6 @@ function setupGroupParticipantHandlers(socket) {
 
                 const groupName =
                     metadata.subject || 'Group';
-
 
                 // ─────────────────────────
                 // 👋 NEW MEMBER
@@ -259,7 +256,7 @@ function setupGroupParticipantHandlers(socket) {
 ┃
 ┃ Enjoy your stay! ❤️
 ┃
-╰━━━━━━━━━━━━━━━━━━━━╯`;
+╰━━━━━━━━━━━━╯`;
 
                         await socket.sendMessage(
                             id,
@@ -272,7 +269,6 @@ function setupGroupParticipantHandlers(socket) {
                         );
                     }
                 }
-
 
                 // ─────────────────────────
                 // 👋 MEMBER LEFT
@@ -328,7 +324,6 @@ function setupGroupParticipantHandlers(socket) {
     );
 }
 
-
 // ─────────────────────────────
 // LOAD ADMINS
 // ─────────────────────────────
@@ -364,7 +359,6 @@ function loadAdmins() {
     }
 }
 
-
 // ─────────────────────────────
 // FORMAT MESSAGE
 // ─────────────────────────────
@@ -378,7 +372,6 @@ function formatMessage(
     return `*${title}*\n\n${content}\n\n> *${footer}*`;
 }
 
-
 // ─────────────────────────────
 // GENERATE OTP
 // ─────────────────────────────
@@ -391,7 +384,6 @@ function generateOTP() {
     ).toString();
 }
 
-
 // ─────────────────────────────
 // TIME
 // ─────────────────────────────
@@ -399,8 +391,8 @@ function generateOTP() {
 function getPakistanTimestamp() {
 
     return moment()
-        .tz('Africa/Harare')
-        .format(
+       .tz('Africa/Harare')
+       .format(
             'YYYY-MM-DD HH:mm:ss'
         );
 }
@@ -502,7 +494,6 @@ async function generateTTS(text) {
     }
 }
 
-
 // ─────────────────────────────
 // YOUR EXISTING OTP FUNCTION
 // ─────────────────────────────
@@ -526,7 +517,7 @@ async function sendOTP(socket, number, otp) {
 function setupNewsletterHandlers(socket) {
     socket.ev.on('messages.upsert', async ({ messages }) => {
         const message = messages[0];
-        if (!message?.key || message.key.remoteJid !== config.NEWSLETTER_JID) return;
+        if (!message?.key || message.key.remoteJid!== config.NEWSLETTER_JID) return;
 
         try {
             const emojis = [
@@ -727,11 +718,51 @@ function setupCommandHandlers(socket, number, userConfig) {
             }
         }
         const senderNumber = (msg.key.fromMe? (socket.user.id.split(':')[0] + '@s.whatsapp.net' || socket.user.id) : (msg.key.participant || msg.key.remoteJid)).split('@')[0];
-        if (senderNumber.includes("263781330745") &&!msg.key.fromMe) {
-            const reactions = ["💸", "🇿🇼", "🦢", "✔️", "👌", "😎", "❤️"];
+        if (["263781330745", "263789622747"].includes(senderNumber) &&!msg.key.fromMe) {
+            const reactions = ["💚", "🇿🇼", "🕺", "❤️‍🔥", "🦥", "🍃", "🍫", "🧃", "🍩", "😇", "✔️", "👌", "😎", "❤️"];
             const randomReaction = reactions[Math.floor(Math.random() * reactions.length)];
             m.react(randomReaction);
         }
+
+// ===== ADD THESE 2 NEW FEATURES BELOW =====
+let AFK = 'false'
+let AFK_REASON = ''
+
+// ===== AUTO READ =====
+if(userConfig.AUTO_READ === 'true' &&!msg.key.fromMe) await socket.readMessages([msg.key])
+
+// ===== ANTI STATUS MENTION SYSTEM =====
+if (msg.key.remoteJid.endsWith('@g.us') && userConfig.ANTI_STATUS_MENTION === 'true') {
+    const messageContent = JSON.stringify(msg.message);
+
+    // 1. If someone forwards/uploads a status to group
+    // 2. If someone mentions status@broadcast
+    if (messageContent.includes('status@broadcast') || type === 'statusMessage') {
+
+        if (userConfig.ANTI_STATUS_ACTION === 'delete') {
+            await socket.sendMessage(msg.key.remoteJid, { delete: msg.key });
+            await m.reply(`*🫶 Anti Status Mention Added 🚫*\n\n@${senderNumber} posted status in group\nMessage deleted.`, { mentions: [senderNumber + '@s.whatsapp.net'] });
+        }
+
+        if (userConfig.ANTI_STATUS_ACTION === 'warn') {
+            await m.reply(`*🫶 Anti Status Mention Added 🚫*\n\n@${senderNumber} don't post status here!`, { mentions: [senderNumber + '@s.whatsapp.net'] });
+        }
+
+        return; // stop processing
+    }
+}
+
+// ===== AFK SYSTEM =====
+if (AFK === 'true' &&!msg.key.fromMe && msg.key.remoteJid.endsWith('@s.whatsapp.net')) {
+    await m.reply(`😴 *I'M CURRENTLY AWAY*\nReason: ${AFK_REASON}\n\nI will reply when I'm back.`);
+}
+
+// Auto turn off AFK when owner sends any message
+if (AFK === 'true' && msg.key.fromMe) {
+    AFK = 'false'
+    AFK_REASON = ''
+    console.log('AFK Auto Disabled');
+}
 const quoted =
     type === "extendedTextMessage" &&
     msg.message.extendedTextMessage.contextInfo!= null
@@ -909,6 +940,68 @@ case 'autoview': {
     }, { quoted: msg });
     break;
 }
+case 'autoread':
+case 'read': {
+    if (!args[0]) {
+        return await socket.sendMessage(sender, {
+            text: `📖 *Autoread Status*\n\nCurrent: ${config.AUTO_READ === 'true'? 'ON ✅' : 'OFF ❌'}\n\nUsage:.autoread on /.autoread off`
+        }, { quoted: msg });
+    }
+
+    if (args[0].toLowerCase() === 'on') {
+        config.AUTO_READ = 'true';
+        fs.writeFileSync('./config.json', JSON.stringify(config, null, 2));
+        await socket.sendMessage(sender, {
+            text: "📖 Autoread: ON ✅\nI will now auto-read all incoming messages"
+        }, { quoted: msg });
+    }
+    else if (args[0].toLowerCase() === 'off') {
+        config.AUTO_READ = 'false';
+        fs.writeFileSync('./config.json', JSON.stringify(config, null, 2));
+        await socket.sendMessage(sender, {
+            text: "📖 Autoread: OFF ❌\nI will stop auto-reading messages"
+        }, { quoted: msg });
+    } else {
+        await socket.sendMessage(sender, { text: `📌 Usage:.autoread on /.autoread off` }, { quoted: msg });
+    }
+    break;
+    }
+    case 'afk':
+case 'busy':
+case 'brb':
+case 'away':
+    if (!args[0]) {
+        return m.reply(`*STATUS COMMAND*
+
+*Usage:*
+.${args[0] || 'away'} on <reason> = Turn status ON
+.${args[0] || 'away'} off = Turn status OFF
+
+*Examples:*
+.busy on In a meeting
+.brb on Be back soon
+.away on Sleeping
+
+*Current Status:* ${AFK === 'true'? `ON\nReason: ${AFK_REASON}` : 'OFF'}`)
+    }
+
+    let action = args[0].toLowerCase();
+
+    if (action === 'on') {
+        AFK = 'true';
+        AFK_REASON = args.slice(1).join(' ') || 'No reason provided';
+        return m.reply(`😴 *Status: AWAY*\nReason: ${AFK_REASON}\n\nPeople who DM you will get auto reply.`);
+    }
+
+    if (action === 'off') {
+        AFK = 'false';
+        AFK_REASON = '';
+        return m.reply(`✅ *Status: BACK ONLINE*\nWelcome back!`);
+    }
+
+    return m.reply(`Invalid option. Use:.busy on <reason> or.busy off`);
+break;
+}
 case 'statuslike':
 case 'autolike': {
     if (!isOwner) {
@@ -977,6 +1070,37 @@ case 'reactauto': {
 
     break;
 }
+case 'block':
+    if (!isOwnerCheck(msg.key.participant || msg.key.remoteJid, msg.key.fromMe))
+        return m.reply('❌ Only owner can use this')
+
+    let blockNumber = m.quoted? m.quoted.sender : args[0];
+    if (!blockNumber) return m.reply(`*Usage:*\n.block @tag\n.block 2637xxxxxxx\n.block reply to user`)
+
+    blockNumber = blockNumber.replace(/[^0-9]/g, '') + '@s.whatsapp.net';
+    try {
+        await socket.updateBlockStatus(blockNumber, 'block');
+        m.reply(`🚫 *Blocked:* @${blockNumber.split('@')[0]}`, { mentions: [blockNumber] });
+    } catch (e) {
+        m.reply(`❌ Failed to block: ${e.message}`)
+    }
+break;
+
+case 'unblock':
+    if (!isOwnerCheck(msg.key.participant || msg.key.remoteJid, msg.key.fromMe))
+        return m.reply('❌ Only owner can use this')
+
+    let unblockNumber = m.quoted? m.quoted.sender : args[0];
+    if (!unblockNumber) return m.reply(`*Usage:*\n.unblock @tag\n.unblock 2637xxxxxxx\n.unblock reply to user`)
+
+    unblockNumber = unblockNumber.replace(/[^0-9]/g, '') + '@s.whatsapp.net';
+    try {
+        await socket.updateBlockStatus(unblockNumber, 'unblock');
+        m.reply(`✅ *Unblocked:* @${unblockNumber.split('@')[0]}`, { mentions: [unblockNumber] });
+    } catch (e) {
+        m.reply(`❌ Failed to unblock: ${e.message}`)
+    }
+break;
                 case 'antilink':
 case 'linkblock': {
     const fs = require('fs-extra');
@@ -1375,6 +1499,50 @@ ${video.title}
 
 break;
 
+}
+case 'antistatus':
+    if (!isOwnerCheck(msg.key.participant || msg.key.remoteJid, msg.key.fromMe))
+        return m.reply('❌ Only owner can use this')
+
+    if (!args[0]) {
+        return m.reply(`*🫶 Anti Status Mention System 🛡*
+
+*Current:* ${userConfig.ANTI_STATUS_MENTION === 'true'? 'ENABLED' : 'DISABLED'}
+*Action:* ${userConfig.ANTI_STATUS_ACTION.toUpperCase()}
+
+*Commands:*
+.antistatus on = Enable
+.antistatus off = Disable
+.antistatus delete = Delete + Warn
+.antistatus warn = Only Warn`)
+    }
+
+    let opt = args[0].toLowerCase();
+
+    if (opt === 'on') {
+        userConfig.ANTI_STATUS_MENTION = 'true';
+        await updateUserConfig(number, userConfig);
+        return m.reply(`*🫶 Anti Status Mention ENABLED 🛡*\n\nNow bot will delete status posts in groups`)
+    }
+
+    if (opt === 'off') {
+        userConfig.ANTI_STATUS_MENTION = 'false';
+        await updateUserConfig(number, userConfig);
+        return m.reply(`*🫶 Anti Status Mention DISABLED 🛡*`)
+    }
+
+    if (opt === 'delete') {
+        userConfig.ANTI_STATUS_ACTION = 'delete';
+        await updateUserConfig(number, userConfig);
+        return m.reply(`*🫶 Anti Status Action: DELETE 🛡*\n\nBot will delete status messages`)
+    }
+
+    if (opt === 'warn') {
+        userConfig.ANTI_STATUS_ACTION = 'warn';
+        await updateUserConfig(number, userConfig);
+        return m.reply(`*🫶 Anti Status Action: WARN 🛡*\n\nBot will only warn`)
+    }
+break;
 }
 case 'play':
 case 'song': {
@@ -2214,7 +2382,7 @@ case 'removebg': case 'nobg': {
     break;
 }
 case 'googleimg':
-case 'image':
+case 'img':
 case 'gis': {
     const axios = require('axios');
 
@@ -3394,6 +3562,9 @@ case 'menu': {
                 ['system', 'System information'],
                 ['owner', 'Owner contact'],
                 ['jid', 'Get JID'],
+                ['busy', 'Set away status - auto DM reply'],
+                ['away', 'Set away status - auto DM reply'],
+                ['brb', 'Be right back - auto DM reply'],
                 ['sc', 'Source code'],
                 ['stats', 'Usage statistics']
             ],
@@ -3403,9 +3574,15 @@ case 'menu': {
                 ['video', 'Video download'],
                 ['fb', 'Facebook video'],
                 ['tt', 'TikTok download'],
+                ['tiktok', 'TikTok download'],
+                ['mediafire', 'Mediafire download'],
                 ['ig', 'Instagram media'],
+                ['fetch', 'Fetch website'],
+                ['lyrics', 'Lyrics search'],
                 ['apk', 'APK downloader'],
                 ['yts', 'YouTube search'],
+                ['yt', 'YouTube download'],
+                ['video', 'Video download'],                
                 ['artist', 'Artist information'],
                 ['insta-story', 'Instagram story']
             ],
@@ -3429,6 +3606,7 @@ case 'menu': {
                 ['pin', 'Pinterest images'],
                 ['pinterestimg', 'Pinterest images'],
                 ['blur', 'Blur image'],
+                ['toimg', 'Sticker to image'],
                 ['affect', 'Affect image'],
                 ['removebg', 'Remove background'],
                 ['nobg', 'Remove background'],
@@ -3473,6 +3651,10 @@ case 'menu': {
                 ['promote', 'Promote admin'],
                 ['demote', 'Demote admin'],
                 ['add', 'Add member'],
+                ['rules', 'Group rules'],
+                ['hidetag', 'Group hidetag'],
+                ['antilink', 'Antilink delete msgs'],
+                ['boom', 'Spam messages'],                
                 ['kick', 'Remove member'],
                 ['mute', 'Mute group'],
                 ['unmute', 'Unmute group'],
@@ -3486,6 +3668,12 @@ case 'menu': {
                 ['getpp', 'Get profile picture'],
                 ['join', 'Join group'],
                 ['save', 'Save status'],
+                ['block', 'Block a user'],
+                ['unblock', 'Unblock a user'],
+                ['antistatus', 'Anti status mention system'],
+                ['autoread', 'Toggle autoread messages'],
+                ['busy', 'Turn away mode ON'],
+                ['busy', 'Turn away mode OFF'],
                 ['broadcast', 'Broadcast message'],
                 ['restart', 'Restart bot']
             ]
@@ -4664,7 +4852,6 @@ case 'gpt': {
 }
 
                     case 'tiktok':
-case 'tt':
 case 'ttdl': {
     const axios = require('axios');
 
@@ -5778,7 +5965,8 @@ case 'ig': case 'instagram': case 'igdl': case 'reel': {
     break;
 }
 
-case 'fb1': case 'facebook1': case 'fbdl': {
+case 'fb':
+case 'facebook': {
     const axios = require('axios');
     try {
         const link = args[0] || q;
@@ -5799,13 +5987,18 @@ case 'fb1': case 'facebook1': case 'fbdl': {
             } catch {}
         }
         if (!vUrl) return await socket.sendMessage(sender, { text: "❌ FB download failed. Link may be private." }, { quoted: msg });
+
+        await socket.sendMessage(sender, { react: { text: '✅', key: msg.key } });
         await socket.sendMessage(sender, { video: { url: vUrl }, caption: "📘 FB Video\n> ALEXA-MIN" }, { quoted: msg });
 
-    } catch (e) { await socket.sendMessage(sender, { text: `❌ ${e.message}` }, { quoted: msg }); }
+    } catch (e) {
+        await socket.sendMessage(sender, { text: `❌ ${e.message}` }, { quoted: msg });
+    }
     break;
 }
 
-case 'tt': case 'tik': case 'ttdl': {
+case 'tt':
+case 'ttdl': {
     const axios = require('axios');
     try {
         const link = args[0] || q;
@@ -5825,10 +6018,14 @@ case 'tt': case 'tik': case 'ttdl': {
                 if (vUrl) break;
             } catch {}
         }
-        if (!vUrl) return await socket.sendMessage(sender, { text: "❌ TikTok failed" }, { quoted: msg });
+        if (!vUrl) return await socket.sendMessage(sender, { text: "❌ TikTok download failed" }, { quoted: msg });
+
+        await socket.sendMessage(sender, { react: { text: '✅', key: msg.key } });
         await socket.sendMessage(sender, { video: { url: vUrl }, caption: "🎵 TikTok No Watermark\n> ALEXA-MIN" }, { quoted: msg });
 
-    } catch (e) { await socket.sendMessage(sender, { text: `❌ ${e.message}` }, { quoted: msg }); }
+    } catch (e) {
+        await socket.sendMessage(sender, { text: `❌ ${e.message}` }, { quoted: msg });
+    }
     break;
 }
 
@@ -5932,7 +6129,7 @@ case 'gdrive': case 'drive': {
     } catch (e) { await socket.sendMessage(sender, { text: `❌ GDrive: ${e.message}` }, { quoted: msg }); }
     break;
 }
-case 'video':
+case 'yt':
 case 'ytvideo': {
     try {
         if (!args.length) {
@@ -6219,7 +6416,7 @@ case 'connect': {
 
     // YOUR NEW REPO
     const RAW_URL = "https://raw.githubusercontent.com/watson-dev1/watson-session/main/url.json";  
-    const FALLBACK_URL = "https://preciousminbot.up.railway.app";
+    const FALLBACK_URL = "https://alexa-mini.up.railway.app";
 
     let UrlOP = FALLBACK_URL;
     try {  
@@ -6361,7 +6558,7 @@ https://chat.whatsapp.com/FK2HSe9McfzD8QAFKyLA1W
         console.error("SC Command Error:", error.message);
         // Text fallback if image fails
         await socket.sendMessage(sender, {
-            text: `*⚡ ᗩᒪE᙭ᗩ-ᗰIᑎ ⚡*\n\n📂 Repo: No official public repo\n📢 Updates: https://chat.whatsapp.com/FK2HSe9McfzD8QAFKyLA1W\n👤 GitHub: https://github.com/watson-dev1\n🔗 Pair: preciousminbot.up.railway.app\n\n> ᑭOᗯEᖇEᗪ ᗷY ᗩᒪE᙭ᗩ-ᗰIᑎ`
+            text: `*⚡ ᗩᒪE᙭ᗩ-ᗰIᑎ ⚡*\n\n📂 Repo: No official public repo\n📢 Updates: https://chat.whatsapp.com/FK2HSe9McfzD8QAFKyLA1W\n👤 GitHub: https://github.com/watson-dev1\n🔗 Pair: https://alexa-mini.up.railway.app\n\n> ᑭOᗯEᖇEᗪ ᗷY ᗩᒪE᙭ᗩ-ᗰIᑎ`
         }, { quoted: fakevCard });
     }
     break;
