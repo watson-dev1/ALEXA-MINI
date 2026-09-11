@@ -39,7 +39,7 @@ const config = {
     AUTO_VIEW_STATUS: 'true',
     AUTO_LIKE_STATUS: 'true',
     AUTO_RECORDING: 'false',
-    AUTO_REACT: 'false',
+    AUTO_REACT: 'true',
     ANTI_LINK: 'true',
 
     AUTO_LIKE_EMOJI: [
@@ -108,26 +108,88 @@ const config = {
 // ─────────────────────────────
 // FIX FOR: owner is not defined / isOwner is not defined
 // ─────────────────────────────
-const OWNER_NUMBERS = [config.OWNER_NUMBER].flat().map(n => n.replace(/[^0-9]/g, ''));
+
+const OWNER_NUMBERS = (
+    Array.isArray(config?.OWNER_NUMBER)
+        ? config.OWNER_NUMBER
+        : [config?.OWNER_NUMBER]
+)
+    .filter(Boolean)
+    .map(n => String(n).replace(/[^0-9]/g, ''));
+
+
+// ─────────────────────────────
+// SANITIZE NUMBER
+// ─────────────────────────────
 
 function getSanitizedNumber(jid = '') {
-    return jid.split('@')[0].replace(/[^0-9]/g, '');
+    return String(jid)
+        .split('@')[0]
+        .replace(/[^0-9]/g, '');
 }
+
+
+// ─────────────────────────────
+// OWNER CHECK
+// ─────────────────────────────
 
 function isOwnerCheck(jid, fromMe = false) {
-    if (fromMe) return true;
+
+    if (fromMe === true) {
+        return true;
+    }
+
     const num = getSanitizedNumber(jid);
-    return OWNER_NUMBERS.some(o => num.includes(o) || o.includes(num));
+
+    if (!num) {
+        return false;
+    }
+
+    return OWNER_NUMBERS.some(ownerNumber =>
+        num === ownerNumber ||
+        num.includes(ownerNumber) ||
+        ownerNumber.includes(num)
+    );
 }
 
-// prevent ReferenceError for userConfig / sanitizedNumber
-let userConfig = {...config.DEFAULT_SETTINGS };
+
+// ─────────────────────────────
+// USER CONFIG
+// ─────────────────────────────
+
+let userConfig = {
+    ...(config?.DEFAULT_SETTINGS || {})
+};
+
+
+// ─────────────────────────────
+// UPDATE USER CONFIG
+// ─────────────────────────────
+
 async function updateUserConfig(number, newConf) {
-    try {
-        userConfig = newConf;
-        return true;
-    } catch { return false; }
+
+    if (!number) {
+        throw new Error('User number is missing');
+    }
+
+    if (!newConf || typeof newConf !== 'object') {
+        throw new Error('Invalid user configuration');
+    }
+
+    // Keep configuration in memory
+    userConfig = {
+        ...userConfig,
+        ...newConf
+    };
+
+    console.log(
+        `[CONFIG] Updated for ${number}`
+    );
+
+    return true;
 }
+
+
 // ─────────────────────────────
 // END FIX
 // ─────────────────────────────
@@ -224,7 +286,14 @@ function setupGroupParticipantHandlers(socket) {
                     await socket.groupMetadata(id);
 
                 const groupName =
-                    metadata.subject || 'Group';
+                    metadata?.subject || 'Group';
+
+                // ─────────────────────────
+                // BOT NAME
+                // ─────────────────────────
+
+                const currentBotName =
+                    config?.BOT_NAME || 'ALEXA-MINI';
 
                 // ─────────────────────────
                 // 👋 NEW MEMBER
@@ -240,8 +309,16 @@ function setupGroupParticipantHandlers(socket) {
                         of participants
                     ) {
 
+                        // Keep original JID, including @lid
+                        const jid =
+                            typeof participant === 'string'
+                                ? participant
+                                : participant?.id;
+
+                        if (!jid) continue;
+
                         const number =
-                            participant.split('@')[0];
+                            jid.split('@')[0];
 
                         const welcomeText =
 `╭━━━〔 👋 WELCOME 〕━━━╮
@@ -252,7 +329,7 @@ function setupGroupParticipantHandlers(socket) {
 ┃ *${groupName}*
 ┃
 ┃ 📜 Please check the group rules.
-┃ 🤖 I'm ${botName}.
+┃ 🤖 I'm ${currentBotName}.
 ┃
 ┃ Enjoy your stay! ❤️
 ┃
@@ -263,7 +340,7 @@ function setupGroupParticipantHandlers(socket) {
                             {
                                 text: welcomeText,
                                 mentions: [
-                                    participant
+                                    jid
                                 ]
                             }
                         );
@@ -287,8 +364,15 @@ function setupGroupParticipantHandlers(socket) {
                         of participants
                     ) {
 
+                        const jid =
+                            typeof participant === 'string'
+                                ? participant
+                                : participant?.id;
+
+                        if (!jid) continue;
+
                         const number =
-                            participant.split('@')[0];
+                            jid.split('@')[0];
 
                         const goodbyeText =
 `╭━━━〔 👋 GOODBYE 〕━━━╮
@@ -306,7 +390,7 @@ function setupGroupParticipantHandlers(socket) {
                             {
                                 text: goodbyeText,
                                 mentions: [
-                                    participant
+                                    jid
                                 ]
                             }
                         );
@@ -317,7 +401,7 @@ function setupGroupParticipantHandlers(socket) {
 
                 console.error(
                     'GROUP PARTICIPANT ERROR:',
-                    error
+                    error?.stack || error
                 );
             }
         }
@@ -5966,10 +6050,13 @@ ${e.message || 'Unable to fetch the URL.'}`
     break;
 }
 case 'welcome': {
+
     if (!isGroup) {
         return await socket.sendMessage(
             sender,
-            { text: '❌ This command is only for groups.' },
+            {
+                text: '❌ This command is only for groups.'
+            },
             { quoted: msg }
         );
     }
@@ -5977,13 +6064,23 @@ case 'welcome': {
     if (!isAdmin) {
         return await socket.sendMessage(
             sender,
-            { text: '❌ Admins only.' },
+            {
+                text: '❌ Admins only.'
+            },
             { quoted: msg }
         );
     }
 
     const option =
-        String(args[0] || '').toLowerCase();
+        String(args[0] || '')
+            .toLowerCase()
+            .trim();
+
+    const current =
+        groupSettings.get(sender) || {
+            welcome: false,
+            goodbye: false
+        };
 
     if (!['on', 'off'].includes(option)) {
         return await socket.sendMessage(
@@ -5997,41 +6094,47 @@ ${p}welcome on
 ${p}welcome off
 
 Current:
-${groupSettings.get(sender)?.welcome ? 'ON 🟢' : 'OFF 🔴'}`
+${current.welcome ? 'ON 🟢' : 'OFF 🔴'}`
             },
             { quoted: msg }
         );
     }
 
-    const current =
-        groupSettings.get(sender) || {
-            welcome: false,
-            goodbye: false
-        };
-
     current.welcome =
         option === 'on';
 
-    groupSettings.set(sender, current);
+    groupSettings.set(
+        sender,
+        current
+    );
 
     await socket.sendMessage(
         sender,
         {
             text:
-`👋 *WELCOME ${option === 'on' ? 'ENABLED 🟢' : 'DISABLED 🔴'}*
+`👋 *WELCOME ${current.welcome ? 'ENABLED 🟢' : 'DISABLED 🔴'}*
 
-New members will ${option === 'on' ? 'now receive a welcome message.' : 'no longer receive welcome messages.'}`
+New members will ${
+    current.welcome
+        ? 'now receive a welcome message.'
+        : 'no longer receive welcome messages.'
+}`
         },
         { quoted: msg }
     );
 
     break;
 }
+
+
 case 'goodbye': {
+
     if (!isGroup) {
         return await socket.sendMessage(
             sender,
-            { text: '❌ This command is only for groups.' },
+            {
+                text: '❌ This command is only for groups.'
+            },
             { quoted: msg }
         );
     }
@@ -6039,13 +6142,23 @@ case 'goodbye': {
     if (!isAdmin) {
         return await socket.sendMessage(
             sender,
-            { text: '❌ Admins only.' },
+            {
+                text: '❌ Admins only.'
+            },
             { quoted: msg }
         );
     }
 
     const option =
-        String(args[0] || '').toLowerCase();
+        String(args[0] || '')
+            .toLowerCase()
+            .trim();
+
+    const current =
+        groupSettings.get(sender) || {
+            welcome: false,
+            goodbye: false
+        };
 
     if (!['on', 'off'].includes(option)) {
         return await socket.sendMessage(
@@ -6056,28 +6169,34 @@ case 'goodbye': {
 
 Usage:
 ${p}goodbye on
-${p}goodbye off`
+${p}goodbye off
+
+Current:
+${current.goodbye ? 'ON 🟢' : 'OFF 🔴'}`
             },
             { quoted: msg }
         );
     }
 
-    const current =
-        groupSettings.get(sender) || {
-            welcome: false,
-            goodbye: false
-        };
-
     current.goodbye =
         option === 'on';
 
-    groupSettings.set(sender, current);
+    groupSettings.set(
+        sender,
+        current
+    );
 
     await socket.sendMessage(
         sender,
         {
             text:
-`👋 *GOODBYE ${option === 'on' ? 'ENABLED 🟢' : 'DISABLED 🔴'}*`
+`👋 *GOODBYE ${current.goodbye ? 'ENABLED 🟢' : 'DISABLED 🔴'}*
+
+Members will ${
+    current.goodbye
+        ? 'now receive a goodbye message.'
+        : 'no longer receive a goodbye message.'
+}`
         },
         { quoted: msg }
     );
@@ -6086,29 +6205,216 @@ ${p}goodbye off`
 }
 case 'image':
 case 'img': {
+
     const axios = require('axios');
+
     try {
-        const query = (args.join(' ') || '').trim() || q.replace(/^[.\/!]img(e)?\s*/i, '').trim();
+
+        const query =
+            (args.join(' ') || '')
+                .trim() ||
+            q.replace(
+                /^[.\/!]img(e)?\s*/i,
+                ''
+            ).trim();
+
         if (!query) {
-            await socket.sendMessage(sender, { text: '📌 Usage:.img <search>\nEx:.img Ronaldo' }, { quoted: fakevCard });
+            await socket.sendMessage(
+                sender,
+                {
+                    text:
+`📌 *Usage:*
+.img <search>
+
+*Example:*
+.img Ronaldo`
+                },
+                { quoted: fakevCard }
+            );
             break;
         }
-        await socket.sendMessage(sender, { react: { text: '🔍', key: msg.key } });
 
-        // Pollinations is google-like and never dies
-        // We generate 4 images from search term using Pollinations + send real Google scrape as backup
-        const count = 4;
-        for(let i=0; i<count; i++){
-            const imgUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(query + ' high quality photo') }?width=1024&height=1024&seed=${Math.floor(Math.random()*10000)}&nologo=true`;
-            await socket.sendMessage(sender, {
-                image: { url: imgUrl },
-                caption: `🔍 *Result for:* ${query} [${i+1}/${count}]`
-            }, { quoted: fakevCard });
+        // ─────────────────────────
+        // SEARCHING
+        // ─────────────────────────
+
+        await socket.sendMessage(
+            sender,
+            {
+                react: {
+                    text: '🔍',
+                    key: msg.key
+                }
+            }
+        );
+
+        // DuckDuckGo image search
+        const searchUrl =
+            `https://duckduckgo.com/`;
+
+        const html =
+            await axios.get(
+                searchUrl,
+                {
+                    headers: {
+                        'User-Agent':
+                            'Mozilla/5.0'
+                    },
+                    timeout: 15000
+                }
+            );
+
+        // Get vqd token
+        const vqdMatch =
+            html.data.match(
+                /vqd=['"]?([\d-]+)['"]?/
+            );
+
+        if (!vqdMatch) {
+            throw new Error(
+                'Image search service unavailable'
+            );
         }
-        await socket.sendMessage(sender, { react: { text: '✅', key: msg.key } });
+
+        const vqd = vqdMatch[1];
+
+        const result =
+            await axios.get(
+                'https://duckduckgo.com/i.js',
+                {
+                    params: {
+                        l: 'us-en',
+                        o: 'json',
+                        q: query,
+                        vqd: vqd,
+                        f: ',,,',
+                        p: '1'
+                    },
+                    headers: {
+                        'User-Agent':
+                            'Mozilla/5.0',
+                        'Referer':
+                            'https://duckduckgo.com/'
+                    },
+                    timeout: 15000
+                }
+            );
+
+        const results =
+            Array.isArray(result.data?.results)
+                ? result.data.results
+                : [];
+
+        if (!results.length) {
+            await socket.sendMessage(
+                sender,
+                {
+                    text:
+                        `❌ No images found for *${query}*.`
+                },
+                { quoted: fakevCard }
+            );
+
+            await socket.sendMessage(
+                sender,
+                {
+                    react: {
+                        text: '❌',
+                        key: msg.key
+                    }
+                }
+            );
+
+            break;
+        }
+
+        // ─────────────────────────
+        // SEND UP TO 4 IMAGES
+        // ─────────────────────────
+
+        const images =
+            results
+                .map(item =>
+                    item?.thumbnail ||
+                    item?.image
+                )
+                .filter(Boolean)
+                .slice(0, 4);
+
+        let sent = 0;
+
+        for (const imageUrl of images) {
+
+            try {
+
+                await socket.sendMessage(
+                    sender,
+                    {
+                        image: {
+                            url: imageUrl
+                        },
+                        caption:
+                            `🔍 *Result for:* ${query}\n` +
+                            `🖼️ ${sent + 1}/${images.length}`
+                    },
+                    { quoted: fakevCard }
+                );
+
+                sent++;
+
+            } catch (imageError) {
+
+                console.error(
+                    '[IMG] Failed image:',
+                    imageError?.message || imageError
+                );
+            }
+        }
+
+        if (sent === 0) {
+            throw new Error(
+                'Could not download any images'
+            );
+        }
+
+        await socket.sendMessage(
+            sender,
+            {
+                react: {
+                    text: '✅',
+                    key: msg.key
+                }
+            }
+        );
+
     } catch (e) {
-        await socket.sendMessage(sender, { text: `❌ Error: ${e.message}` }, { quoted: fakevCard });
+
+        console.error(
+            '[IMG SEARCH ERROR]',
+            e?.stack || e
+        );
+
+        await socket.sendMessage(
+            sender,
+            {
+                text:
+                    `❌ *Image search failed.*\n\n` +
+                    `${e?.message || 'Service unavailable'}`
+            },
+            { quoted: fakevCard }
+        );
+
+        await socket.sendMessage(
+            sender,
+            {
+                react: {
+                    text: '❌',
+                    key: msg.key
+                }
+            }
+        );
     }
+
     break;
 }
 
