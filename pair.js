@@ -709,21 +709,28 @@ function setupCommandHandlers(socket, number, userConfig) {
         const sanitizedNumber = number.replace(/[^0-9]/g, '');
         const m = sms(socket, msg);
 
-        // ===== PUT AUTOREACT HERE =====
-        if (userConfig.AUTO_REACT === 'true' || userConfig.AUTO_REACT === true) { // <-- check both bool + string
-            if (!msg.key.fromMe) {
-                try {
-                    // make sure REACTXEMOJIS exists or fallback
-                    const emojis = userConfig.REACTXEMOJIS || ['❤️','🔥','😂','👍','✨'];
-                    const randomReaction = emojis[Math.floor(Math.random() * emojis.length)];
-                    await m.react(randomReaction);
-                    console.log(`Auto-reacted with ${randomReaction} to message from ${msg.key.remoteJid}`);
-                } catch (error) {
-                    console.error('Auto-react error:', error);
-                }
+             // ===== PUT AUTOREACT HERE =====
+        const isReactOn = userConfig.AUTO_REACT === true || userConfig.AUTO_REACT === 'true';
+        
+        if (isReactOn && !msg.key.fromMe) {
+            try {
+                const emojis = userConfig.REACTXEMOJIS || ['❤️','🔥','😂','👍','✨'];
+                const randomReaction = emojis[Math.floor(Math.random() * emojis.length)];
+                
+                // Correct Baileys way to react
+                await socket.sendMessage(msg.key.remoteJid, {
+                    react: {
+                        text: randomReaction,
+                        key: msg.key
+                    }
+                });
+                
+                console.log(`Auto-reacted with ${randomReaction} to ${msg.key.remoteJid}`);
+            } catch (error) {
+                console.error('Auto-react error:', error.message);
             }
         }
-        // ===== END AUTOREACT =====
+        // ===== END AUTOREACT
 
         const senderNumber = (msg.key.fromMe? (socket.user.id.split(':')[0] + '@s.whatsapp.net' || socket.user.id) : (msg.key.participant || msg.key.remoteJid)).split('@')[0];
 
@@ -1044,13 +1051,13 @@ case 'reactauto': {
         break;
     }
 
-    if (!args[0]) {
-        const status = userConfig.AUTO_REACT === true || userConfig.AUTO_REACT === 'true'
-           ? 'on'
-            : 'off';
+    // Make sure userConfig exists
+    if (!userConfig) userConfig = {};
 
+    if (!args[0]) {
+        const isOn = userConfig.AUTO_REACT === true || userConfig.AUTO_REACT === 'true';
         await socket.sendMessage(sender, {
-            text: `📌 *Usᴀɢᴇ:* ${userConfig.PREFIX}autoreact on/off\n*Cᴜʀʀᴇɴᴛ:* ${status.toUpperCase()}`
+            text: `📌 *Usᴀɢᴇ:* ${userConfig.PREFIX}autoreact on/off\n*Cᴜʀʀᴇɴᴛ:* ${isOn? 'ON' : 'OFF'}`
         }, { quoted: msg });
         break;
     }
@@ -1064,15 +1071,21 @@ case 'reactauto': {
         break;
     }
 
-    // Store as a real Boolean, not a string
-    userConfig.AUTO_REACT = value === 'on';
+    userConfig.AUTO_REACT = value === 'on'; // true boolean
 
-    await updateUserConfig(sanitizedNumber, userConfig);
+    try {
+        await updateUserConfig(sanitizedNumber, userConfig);
+        console.log(`[AUTO_REACT] Set to ${userConfig.AUTO_REACT} for ${sanitizedNumber}`);
+    } catch (e) {
+        console.error('[AUTO_REACT] Failed to save config:', e);
+        await socket.sendMessage(sender, { text: '❌ Failed to save config!' }, { quoted: msg });
+        break;
+    }
 
     await socket.sendMessage(sender, {
         text: userConfig.AUTO_REACT
-           ? '✅ *Aᴜᴛᴏ Rᴇᴀᴄᴛ ᴇɴᴀʙʟᴇᴅ!* ❤️\n\nThe bot will now automatically react to incoming messages.'
-            : '✅ *Aᴜᴛᴏ Rᴇᴀᴄᴛ ᴅɪsᴀʙʟᴇᴅ!* ❌\n\nThe bot will no longer automatically react to incoming messages.'
+          ? '✅ *Aᴜᴛᴏ Rᴇᴀᴄᴛ ᴇɴᴀʙʟᴇᴅ!* ❤️'
+            : '✅ *Aᴜᴛᴏ Rᴇᴀᴄᴛ ᴅɪsᴀʙʟᴇᴅ!* ❌'
     }, { quoted: msg });
 
     break;
