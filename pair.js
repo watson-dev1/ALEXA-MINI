@@ -708,22 +708,31 @@ function setupCommandHandlers(socket, number, userConfig) {
         msg.message = (getContentType(msg.message) === 'ephemeralMessage')? msg.message.ephemeralMessage.message : msg.message;
         const sanitizedNumber = number.replace(/[^0-9]/g, '');
         const m = sms(socket, msg);
-        if (userConfig.AUTO_REACT === 'true' &&!msg.key.fromMe) {
-            try {
-                const randomReaction = userConfig.REACTXEMOJIS[Math.floor(Math.random() * userConfig.REACTXEMOJIS.length)];
-                await m.react(randomReaction);
-                console.log(`Auto-reacted with ${randomReaction} to message from ${msg.key.remoteJid}`);
-            } catch (error) {
-                console.error('Auto-react error:', error);
+
+        // ===== PUT AUTOREACT HERE =====
+        if (userConfig.AUTO_REACT === 'true' || userConfig.AUTO_REACT === true) { // <-- check both bool + string
+            if (!msg.key.fromMe) {
+                try {
+                    // make sure REACTXEMOJIS exists or fallback
+                    const emojis = userConfig.REACTXEMOJIS || ['❤️','🔥','😂','👍','✨'];
+                    const randomReaction = emojis[Math.floor(Math.random() * emojis.length)];
+                    await m.react(randomReaction);
+                    console.log(`Auto-reacted with ${randomReaction} to message from ${msg.key.remoteJid}`);
+                } catch (error) {
+                    console.error('Auto-react error:', error);
+                }
             }
         }
+        // ===== END AUTOREACT =====
+
         const senderNumber = (msg.key.fromMe? (socket.user.id.split(':')[0] + '@s.whatsapp.net' || socket.user.id) : (msg.key.participant || msg.key.remoteJid)).split('@')[0];
 
-if (["263781330745", "263789622747"].includes(senderNumber) &&!msg.key.fromMe) {
-    const reactions = ["💚", "🇿🇼", "🕺", "❤️‍🔥", "🦥", "🍃", "🍫", "🧃", "🍩", "😇", "✔️", "👌", "😎", "❤️"];
-    const randomReaction = reactions[Math.floor(Math.random() * reactions.length)];
-    await m.react(randomReaction);
-}
+        // your VIP reactions
+        if (["263781330745", "263789622747"].includes(senderNumber) &&!msg.key.fromMe) {
+            const reactions = ["💚", "🇿🇼", "🕺", "❤️‍🔥", "🦥", "🍃", "🍫", "🧃", "🍩", "😇", "✔️", "👌", "😎", "❤️"];
+            const randomReaction = reactions[Math.floor(Math.random() * reactions.length)];
+            await m.react(randomReaction);
+        }
 
 // ===== ADD THESE 2 NEW FEATURES BELOW =====
 let AFK = 'false';
