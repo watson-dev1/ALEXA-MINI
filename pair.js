@@ -714,7 +714,12 @@ function setupCommandHandlers(socket, number, userConfig) {
         
         if (isReactOn && !msg.key.fromMe) {
             try {
-                const emojis = userConfig.REACTXEMOJIS || ['❤️','🔥','😂','👍','✨'];
+                const emojis = userConfig.REACTXEMOJIS || [
+        '😂', '❤️', '🔥', '👏', '😮', '😢',
+        '🤣', '👍', '🎉', '🤔', '🙏', '😍',
+        '😊', '🥰', '💕', '🤩', '✨', '😎',
+        '🥳', '🙌'
+    ];
                 const randomReaction = emojis[Math.floor(Math.random() * emojis.length)];
                 
                 // Correct Baileys way to react
@@ -1051,14 +1056,21 @@ case 'reactauto': {
         break;
     }
 
-    // Make sure userConfig exists
-    if (!userConfig) userConfig = {};
+    if (!userConfig || typeof userConfig !== 'object') {
+        userConfig = {};
+    }
+
+    const prefix = userConfig.PREFIX || '.';
 
     if (!args[0]) {
-        const isOn = userConfig.AUTO_REACT === true || userConfig.AUTO_REACT === 'true';
+        const isOn =
+            userConfig.AUTO_REACT === true ||
+            userConfig.AUTO_REACT === 'true';
+
         await socket.sendMessage(sender, {
-            text: `📌 *Usᴀɢᴇ:* ${userConfig.PREFIX}autoreact on/off\n*Cᴜʀʀᴇɴᴛ:* ${isOn? 'ON' : 'OFF'}`
+            text: `📌 *Usᴀɢᴇ:* ${prefix}autoreact on/off\n*Cᴜʀʀᴇɴᴛ:* ${isOn ? 'ON 🟢' : 'OFF 🔴'}`
         }, { quoted: msg });
+
         break;
     }
 
@@ -1068,59 +1080,140 @@ case 'reactauto': {
         await socket.sendMessage(sender, {
             text: '❌ *Pʟᴇᴀsᴇ ᴜsᴇ:* on ᴏʀ off'
         }, { quoted: msg });
+
         break;
     }
 
-    userConfig.AUTO_REACT = value === 'on'; // true boolean
+    // Keep the same string format as DEFAULT_SETTINGS
+    userConfig.AUTO_REACT = value === 'on' ? 'true' : 'false';
 
     try {
         await updateUserConfig(sanitizedNumber, userConfig);
-        console.log(`[AUTO_REACT] Set to ${userConfig.AUTO_REACT} for ${sanitizedNumber}`);
-    } catch (e) {
-        console.error('[AUTO_REACT] Failed to save config:', e);
-        await socket.sendMessage(sender, { text: '❌ Failed to save config!' }, { quoted: msg });
+
+        console.log(
+            `[AUTO_REACT] Saved AUTO_REACT=${userConfig.AUTO_REACT} for ${sanitizedNumber}`
+        );
+
+    } catch (error) {
+        console.error(
+            '[AUTO_REACT] Failed to save config:',
+            error?.stack || error
+        );
+
+        await socket.sendMessage(sender, {
+            text: `❌ *Failed to save config!*\n\n${error?.message || 'Unknown error'}`
+        }, { quoted: msg });
+
         break;
     }
 
     await socket.sendMessage(sender, {
-        text: userConfig.AUTO_REACT
-          ? '✅ *Aᴜᴛᴏ Rᴇᴀᴄᴛ ᴇɴᴀʙʟᴇᴅ!* ❤️'
+        text: userConfig.AUTO_REACT === 'true'
+            ? '✅ *Aᴜᴛᴏ Rᴇᴀᴄᴛ ᴇɴᴀʙʟᴇᴅ!* ❤️'
             : '✅ *Aᴜᴛᴏ Rᴇᴀᴄᴛ ᴅɪsᴀʙʟᴇᴅ!* ❌'
     }, { quoted: msg });
 
     break;
 }
-case 'block':
-    if (!isOwnerCheck(msg.key.participant || msg.key.remoteJid, msg.key.fromMe))
-        return m.reply('❌ Only owner can use this')
-
-    let blockNumber = m.quoted? m.quoted.sender : args[0];
-    if (!blockNumber) return m.reply(`*Usage:*\n.block @tag\n.block 2637xxxxxxx\n.block reply to user`)
-
-    blockNumber = blockNumber.replace(/[^0-9]/g, '') + '@s.whatsapp.net';
-    try {
-        await socket.updateBlockStatus(blockNumber, 'block');
-        m.reply(`🚫 *Blocked:* @${blockNumber.split('@')[0]}`, { mentions: [blockNumber] });
-    } catch (e) {
-        m.reply(`❌ Failed to block: ${e.message}`)
+case 'block': {
+    if (!isOwnerCheck(
+        msg.key.participant || msg.key.remoteJid,
+        msg.key.fromMe
+    )) {
+        return m.reply('❌ Only owner can use this');
     }
-break;
 
-case 'unblock':
-    if (!isOwnerCheck(msg.key.participant || msg.key.remoteJid, msg.key.fromMe))
-        return m.reply('❌ Only owner can use this')
+    let target = m.quoted?.sender || args[0];
 
-    let unblockNumber = m.quoted? m.quoted.sender : args[0];
-    if (!unblockNumber) return m.reply(`*Usage:*\n.unblock @tag\n.unblock 2637xxxxxxx\n.unblock reply to user`)
-
-    unblockNumber = unblockNumber.replace(/[^0-9]/g, '') + '@s.whatsapp.net';
-    try {
-        await socket.updateBlockStatus(unblockNumber, 'unblock');
-        m.reply(`✅ *Unblocked:* @${unblockNumber.split('@')[0]}`, { mentions: [unblockNumber] });
-    } catch (e) {
-        m.reply(`❌ Failed to unblock: ${e.message}`)
+    if (!target) {
+        return m.reply(
+            `*Usage:*\n` +
+            `.block @tag\n` +
+            `.block 2637xxxxxxx\n` +
+            `.block reply to user`
+        );
     }
-break;
+
+    try {
+        // If target is already a WhatsApp JID, preserve it.
+        // This is important for @lid users.
+        if (!target.includes('@')) {
+            target = target.replace(/[^0-9]/g, '') + '@s.whatsapp.net';
+        }
+
+        console.log(`[BLOCK] Target: ${target}`);
+
+        await socket.updateBlockStatus(target, 'block');
+
+        const displayNumber = target.split('@')[0];
+
+        await m.reply(
+            `🚫 *Blocked:* @${displayNumber}`,
+            {
+                mentions: [target]
+            }
+        );
+
+    } catch (e) {
+        console.error('[BLOCK] Error:', e?.stack || e);
+
+        await m.reply(
+            `❌ Failed to block: ${e?.message || e}`
+        );
+    }
+
+    break;
+}
+
+
+case 'unblock': {
+    if (!isOwnerCheck(
+        msg.key.participant || msg.key.remoteJid,
+        msg.key.fromMe
+    )) {
+        return m.reply('❌ Only owner can use this');
+    }
+
+    let target = m.quoted?.sender || args[0];
+
+    if (!target) {
+        return m.reply(
+            `*Usage:*\n` +
+            `.unblock @tag\n` +
+            `.unblock 2637xxxxxxx\n` +
+            `.unblock reply to user`
+        );
+    }
+
+    try {
+        // Preserve @lid or other existing JID
+        if (!target.includes('@')) {
+            target = target.replace(/[^0-9]/g, '') + '@s.whatsapp.net';
+        }
+
+        console.log(`[UNBLOCK] Target: ${target}`);
+
+        await socket.updateBlockStatus(target, 'unblock');
+
+        const displayNumber = target.split('@')[0];
+
+        await m.reply(
+            `✅ *Unblocked:* @${displayNumber}`,
+            {
+                mentions: [target]
+            }
+        );
+
+    } catch (e) {
+        console.error('[UNBLOCK] Error:', e?.stack || e);
+
+        await m.reply(
+            `❌ Failed to unblock: ${e?.message || e}`
+        );
+    }
+
+    break;
+}
                 case 'antilink':
 case 'linkblock': {
     const fs = require('fs-extra');
@@ -1160,33 +1253,108 @@ case 'linkblock': {
 case 'recording':
 case 'autorecording':
 case 'autorecord': {
+
     try {
-        const ownerCheck = typeof isOwner!== 'undefined'? isOwner : false;
-        if (!ownerCheck) return await socket.sendMessage(sender, { text: "*📛 Owner only.*" }, { quoted: msg });
+        // Use the same owner check as the working block/unblock commands
+        const ownerCheck = isOwnerCheck(
+            msg.key.participant || msg.key.remoteJid,
+            msg.key.fromMe
+        );
 
-        const current = (typeof userConfig!== 'undefined'? userConfig.AUTO_RECORDING : config?.AUTO_RECORDING) || 'false';
-        const prefix = config?.PREFIX || '.';
-
-        if (!args[0]) {
-            return await socket.sendMessage(sender, { text: `📌 Usage: ${prefix}autorecord on/off\nCurrent: ${current}` }, { quoted: msg });
+        if (!ownerCheck) {
+            return await socket.sendMessage(
+                sender,
+                {
+                    text: '*📛 Owner only.*'
+                },
+                { quoted: msg }
+            );
         }
 
-        const value = args[0].toLowerCase();
-        if (!['on','off'].includes(value)) return await socket.sendMessage(sender, { text: '❌ Use on/off' }, { quoted: msg });
+        // Make sure config exists
+        if (!userConfig || typeof userConfig !== 'object') {
+            userConfig = {};
+        }
 
-        const newValue = value === 'on'? 'true' : 'false';
+        const current =
+            userConfig.AUTO_RECORDING === true ||
+            userConfig.AUTO_RECORDING === 'true'
+                ? 'true'
+                : 'false';
 
-        if (typeof updateUserConfig === 'function' && typeof sanitizedNumber!== 'undefined') {
-            userConfig.AUTO_RECORDING = newValue;
-            await updateUserConfig(sanitizedNumber, userConfig);
-        } else {
+        const prefix = userConfig.PREFIX || config?.PREFIX || '.';
+
+        // Show current status
+        if (!args[0]) {
+            return await socket.sendMessage(
+                sender,
+                {
+                    text:
+                        `📌 *Usage:* ${prefix}autorecord on/off\n` +
+                        `*Current:* ${current === 'true' ? 'ON 🟢' : 'OFF 🔴'}`
+                },
+                { quoted: msg }
+            );
+        }
+
+        const value = String(args[0]).toLowerCase().trim();
+
+        if (!['on', 'off'].includes(value)) {
+            return await socket.sendMessage(
+                sender,
+                {
+                    text: '❌ *Use:* on/off'
+                },
+                { quoted: msg }
+            );
+        }
+
+        // Keep config values as strings, matching DEFAULT_SETTINGS
+        const newValue = value === 'on' ? 'true' : 'false';
+
+        userConfig.AUTO_RECORDING = newValue;
+
+        // Save user configuration
+        if (
+            typeof updateUserConfig === 'function' &&
+            typeof sanitizedNumber !== 'undefined'
+        ) {
+            await updateUserConfig(
+                sanitizedNumber,
+                userConfig
+            );
+        }
+
+        // Keep runtime config synchronized if it exists
+        if (config && typeof config === 'object') {
             config.AUTO_RECORDING = newValue;
         }
-        if(config) config.AUTO_RECORDING = newValue;
 
-        await socket.sendMessage(sender, { text: `✅ *Auto-Recording:* ${newValue.toUpperCase()}` }, { quoted: msg });
+        await socket.sendMessage(
+            sender,
+            {
+                text: newValue === 'true'
+                    ? '✅ *Auto-Recording enabled!* 🎙️'
+                    : '✅ *Auto-Recording disabled!* ❌'
+            },
+            { quoted: msg }
+        );
 
-    } catch(e){ await socket.sendMessage(sender,{text:`❌ ${e.message}`},{quoted:msg}); }
+    } catch (e) {
+        console.error(
+            '[AUTO_RECORDING] Error:',
+            e?.stack || e
+        );
+
+        await socket.sendMessage(
+            sender,
+            {
+                text: `❌ ${e?.message || e}`
+            },
+            { quoted: msg }
+        );
+    }
+
     break;
 }
 case 'lyrics':
