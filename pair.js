@@ -35,11 +35,17 @@ const {
     S_WHATSAPP_NET
 } = require('@whiskeysockets/baileys');
 
+
+// ═════════════════════════════════════
+// CONFIG
+// ═════════════════════════════════════
+
 const config = {
+
     AUTO_VIEW_STATUS: 'true',
     AUTO_LIKE_STATUS: 'true',
     AUTO_RECORDING: 'false',
-    AUTO_REACT: 'true',
+    AUTO_REACT: 'false',
     ANTI_LINK: 'true',
 
     AUTO_LIKE_EMOJI: [
@@ -63,26 +69,36 @@ const config = {
     OWNER_NAME: 'Watson Fourpence',
 
     MAX_RETRIES: 3,
+
     ADMIN_LIST_PATH: './admin.json',
     IK_IMAGE_PATH: './watson-md.jpg',
+
     NEWSLETTER_JID: '1203634182392851@newsletter',
     NEWSLETTER_MESSAGE_ID: '428',
+
     OTP_EXPIRY: 300000,
+
     OWNER_NUMBER: '263781330745',
 
     CHANNEL_LINK:
         'https://whatsapp.com/channel/0029VbB0E2MBvvsiMnWBM72n',
 
     DEFAULT_SETTINGS: {
+
         AUTO_VIEW_STATUS: 'true',
         AUTO_LIKE_STATUS: 'true',
         AUTO_RECORDING: 'true',
-        ANTI_STATUS_MENTION: 'false', // default off
-        ANTI_STATUS_ACTION: 'delete', // delete | warn
-        AUTO_REACT: 'false',
+
+        ANTI_STATUS_MENTION: 'false',
+        ANTI_STATUS_ACTION: 'delete',
+
+        AUTO_REACT: 'true',
         AUTO_READ: 'false',
+
         ANTI_LINK: 'true',
+
         MODE: 'public',
+
         PREFIX: '.',
 
         BOT_NAME: 'ALEXA-MINI',
@@ -90,24 +106,25 @@ const config = {
         OWNER_NAME: 'Watson Fourpence',
 
         AUTO_LIKE_EMOJI: [
-        '❤️', '🩷', '💖', '🧡', '💛', '💚', '💙', '🖤', '🤍',
-        '😍', '🥰', '😘', '😊', '🥹', '🤗', '😂', '😎', '🤩',
-        '🫶', '🔥', '✨', '💫', '🌟', '💯', '🌸', '🦋', '🌹',
-        '🙏', '🙌', '🫡', '💪', '🌚', '💀', '👻', '🥀'
-    ],
+            '❤️', '🩷', '💖', '🧡', '💛', '💚', '💙', '🖤', '🤍',
+            '😍', '🥰', '😘', '😊', '🥹', '🤗', '😂', '😎', '🤩',
+            '🫶', '🔥', '✨', '💫', '🌟', '💯', '🌸', '🦋', '🌹',
+            '🙏', '🙌', '🫡', '💪', '🌚', '💀', '👻', '🥀'
+        ],
 
         REACTXEMOJIS: [
-        '😂', '❤️', '🔥', '👏', '😮', '😢',
-        '🤣', '👍', '🎉', '🤔', '🙏', '😍',
-        '😊', '🥰', '💕', '🤩', '✨', '😎',
-        '🥳', '🙌'
-    ]
+            '😂', '❤️', '🔥', '👏', '😮', '😢',
+            '🤣', '👍', '🎉', '🤔', '🙏', '😍',
+            '😊', '🥰', '💕', '🤩', '✨', '😎',
+            '🥳', '🙌'
+        ]
     }
 };
 
-// ─────────────────────────────
-// FIX FOR: owner is not defined / isOwner is not defined
-// ─────────────────────────────
+
+// ═════════════════════════════════════
+// OWNER NUMBERS
+// ═════════════════════════════════════
 
 const OWNER_NUMBERS = (
     Array.isArray(config?.OWNER_NUMBER)
@@ -115,23 +132,26 @@ const OWNER_NUMBERS = (
         : [config?.OWNER_NUMBER]
 )
     .filter(Boolean)
-    .map(n => String(n).replace(/[^0-9]/g, ''));
+    .map(n =>
+        String(n).replace(/[^0-9]/g, '')
+    );
 
 
-// ─────────────────────────────
+// ═════════════════════════════════════
 // SANITIZE NUMBER
-// ─────────────────────────────
+// ═════════════════════════════════════
 
 function getSanitizedNumber(jid = '') {
+
     return String(jid)
         .split('@')[0]
         .replace(/[^0-9]/g, '');
 }
 
 
-// ─────────────────────────────
+// ═════════════════════════════════════
 // OWNER CHECK
-// ─────────────────────────────
+// ═════════════════════════════════════
 
 function isOwnerCheck(jid, fromMe = false) {
 
@@ -139,88 +159,297 @@ function isOwnerCheck(jid, fromMe = false) {
         return true;
     }
 
-    const num = getSanitizedNumber(jid);
+    const num =
+        getSanitizedNumber(jid);
 
     if (!num) {
         return false;
     }
 
-    return OWNER_NUMBERS.some(ownerNumber =>
-        num === ownerNumber ||
-        num.includes(ownerNumber) ||
-        ownerNumber.includes(num)
+    return OWNER_NUMBERS.some(
+        ownerNumber =>
+            num === ownerNumber ||
+            num.includes(ownerNumber) ||
+            ownerNumber.includes(num)
     );
 }
 
 
-// ─────────────────────────────
-// USER CONFIG
-// ─────────────────────────────
+// ═════════════════════════════════════
+// PER-SESSION USER CONFIG
+// IMPORTANT FOR MULTIPLE ACCOUNTS
+// ═════════════════════════════════════
 
-let userConfig = {
-    ...(config?.DEFAULT_SETTINGS || {})
-};
+const userConfigs = new Map();
 
+function getUserConfig(number) {
 
-// ─────────────────────────────
-// UPDATE USER CONFIG
-// ─────────────────────────────
+    const sanitizedNumber =
+        getSanitizedNumber(number);
 
-async function updateUserConfig(number, newConf) {
-
-    if (!number) {
-        throw new Error('User number is missing');
+    if (!sanitizedNumber) {
+        return {
+            ...config.DEFAULT_SETTINGS
+        };
     }
 
-    if (!newConf || typeof newConf !== 'object') {
-        throw new Error('Invalid user configuration');
+    if (!userConfigs.has(sanitizedNumber)) {
+
+        userConfigs.set(
+            sanitizedNumber,
+            {
+                ...config.DEFAULT_SETTINGS,
+
+                AUTO_LIKE_EMOJI: [
+                    ...config.DEFAULT_SETTINGS.AUTO_LIKE_EMOJI
+                ],
+
+                REACTXEMOJIS: [
+                    ...config.DEFAULT_SETTINGS.REACTXEMOJIS
+                ]
+            }
+        );
     }
 
-    // Keep configuration in memory
-    userConfig = {
-        ...userConfig,
+    return userConfigs.get(
+        sanitizedNumber
+    );
+}
+
+
+// ═════════════════════════════════════
+// UPDATE ONLY ONE SESSION'S CONFIG
+// ═════════════════════════════════════
+
+async function updateUserConfig(
+    number,
+    newConf
+) {
+
+    const sanitizedNumber =
+        getSanitizedNumber(number);
+
+    if (!sanitizedNumber) {
+        throw new Error(
+            'User number is missing'
+        );
+    }
+
+    if (
+        !newConf ||
+        typeof newConf !== 'object'
+    ) {
+        throw new Error(
+            'Invalid user configuration'
+        );
+    }
+
+    const currentConfig =
+        getUserConfig(
+            sanitizedNumber
+        );
+
+    const updatedConfig = {
+
+        ...currentConfig,
+
         ...newConf
     };
 
+    if (Array.isArray(newConf.AUTO_LIKE_EMOJI)) {
+
+        updatedConfig.AUTO_LIKE_EMOJI = [
+            ...newConf.AUTO_LIKE_EMOJI
+        ];
+    }
+
+    if (Array.isArray(newConf.REACTXEMOJIS)) {
+
+        updatedConfig.REACTXEMOJIS = [
+            ...newConf.REACTXEMOJIS
+        ];
+    }
+
+    userConfigs.set(
+        sanitizedNumber,
+        updatedConfig
+    );
+
     console.log(
-        `[CONFIG] Updated for ${number}`
+        `[CONFIG] Updated only for session ${sanitizedNumber}`
     );
 
     return true;
 }
 
 
-// ─────────────────────────────
-// END FIX
-// ─────────────────────────────
-
-// ─────────────────────────────
+// ═════════════════════════════════════
 // GITHUB
-// ─────────────────────────────
+// ═════════════════════════════════════
+// IMPORTANT:
+// Set GITHUB_TOKEN in Railway Variables.
+// Do NOT put the token directly in this file.
+// ═════════════════════════════════════
 
-const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN || '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' });
+const octokit = new Octokit({
 
-const footer = 'ᑭOᗯEᖇEᗪ ᗷY ᗩᒪE᙭ᗩ-ᗰIᑎ';
-const githubOwner = 'watsonx';
-const repo = 'watson-dev1';
+    auth: process.env.GITHUB_TOKEN || undefined
 
-// ─────────────────────────────
+});
+
+const footer =
+    'ᑭOᗯEᖇEᗪ ᗷY ᗩᒪE᙭ᗩ-ᗰIᑎ';
+
+const githubOwner =
+    'watson-dev1';
+
+const repo =
+    'ALEXA-MIN';
+
+
+// ═════════════════════════════════════
 // GLOBAL STORAGE
-// ─────────────────────────────
+// ═════════════════════════════════════
+//
+// Each number gets its own socket:
+//
+// 263781xxxxxx -> socket A
+// 263789xxxxxx -> socket B
+// 26377xxxxxxx -> socket C
+//
+// ═════════════════════════════════════
 
 const activeSockets = new Map();
-const socketCreationTime = new Map();
-const groupSettings = new Map();
 
-const SESSION_BASE_PATH = './session';
-const NUMBER_LIST_PATH = './numbers.json';
+const socketCreationTime =
+    new Map();
 
-const otpStore = new Map();
+const groupSettings =
+    new Map();
 
-// ─────────────────────────────
+const otpStore =
+    new Map();
+
+
+// ═════════════════════════════════════
+// SESSION DIRECTORY
+// ═════════════════════════════════════
+
+const SESSION_BASE_PATH =
+    path.resolve('./session');
+
+const NUMBER_LIST_PATH =
+    path.resolve('./numbers.json');
+
+
+// ═════════════════════════════════════
+// MAKE SURE SESSION DIRECTORY EXISTS
+// ═════════════════════════════════════
+
+fs.ensureDirSync(
+    SESSION_BASE_PATH
+);
+
+
+// ═════════════════════════════════════
+// GET INDIVIDUAL SESSION PATH
+// ═════════════════════════════════════
+//
+// Every WhatsApp number gets a completely
+// separate authentication directory.
+//
+// Example:
+//
+// session/
+//   263781330745/
+//   263789622747/
+//   263771234567/
+//
+// ═════════════════════════════════════
+
+function getSessionPath(number) {
+
+    const sanitizedNumber =
+        getSanitizedNumber(number);
+
+    if (!sanitizedNumber) {
+        throw new Error(
+            'Invalid session number'
+        );
+    }
+
+    return path.join(
+        SESSION_BASE_PATH,
+        sanitizedNumber
+    );
+}
+
+
+// ═════════════════════════════════════
+// CHECK IF SESSION IS ALREADY CONNECTED
+// ═════════════════════════════════════
+
+function getActiveSocket(number) {
+
+    const sanitizedNumber =
+        getSanitizedNumber(number);
+
+    if (!sanitizedNumber) {
+        return null;
+    }
+
+    return (
+        activeSockets.get(
+            sanitizedNumber
+        ) || null
+    );
+}
+
+
+// ═════════════════════════════════════
+// REMOVE ONLY ONE SESSION
+// ═════════════════════════════════════
+
+function removeActiveSocket(
+    number,
+    socket = null
+) {
+
+    const sanitizedNumber =
+        getSanitizedNumber(number);
+
+    if (!sanitizedNumber) {
+        return;
+    }
+
+    const currentSocket =
+        activeSockets.get(
+            sanitizedNumber
+        );
+
+    // Don't accidentally delete a
+    // newly-created socket.
+    if (
+        socket &&
+        currentSocket &&
+        currentSocket !== socket
+    ) {
+        return;
+    }
+
+    activeSockets.delete(
+        sanitizedNumber
+    );
+
+    socketCreationTime.delete(
+        sanitizedNumber
+    );
+}
+
+
+// ═════════════════════════════════════
 // BOT GLOBAL CONFIG VALUES
-// DO NOT DECLARE botName/owner AGAIN
-// ─────────────────────────────
+// ═════════════════════════════════════
 
 const botName =
     config?.BOT_NAME ||
@@ -231,28 +460,19 @@ const botVersion =
     '3.0.0 Stable';
 
 const botImage =
-            config?.IK_IMAGE_PATH ||
-            config?.IMAGE_PATH ||
-            'https://files.catbox.moe/2q6j6k.jpg';
+    config?.IK_IMAGE_PATH ||
+    config?.IMAGE_PATH ||
+    'https://files.catbox.moe/2q6j6k.jpg';
 
 const ownerName =
     config?.OWNER_NAME ||
     'Watson Fourpence';
 
-// ─────────────────────────────
-// SESSION DIRECTORY
-// ─────────────────────────────
 
-if (!fs.existsSync(SESSION_BASE_PATH)) {
-    fs.mkdirSync(SESSION_BASE_PATH, {
-        recursive: true
-    });
-}
-
-// ─────────────────────────────
+// ═════════════════════════════════════
 // 👥 GROUP PARTICIPANT HANDLERS
 // WELCOME / GOODBYE
-// ─────────────────────────────
+// ═════════════════════════════════════
 
 function setupGroupParticipantHandlers(socket) {
 
@@ -268,36 +488,46 @@ function setupGroupParticipantHandlers(socket) {
                     action
                 } = update;
 
-                // ─────────────────────────
+
+                // ═══════════════════════════
                 // GET GROUP SETTINGS
-                // ─────────────────────────
+                // ═══════════════════════════
 
                 const settings =
                     groupSettings.get(id) || {
+
                         welcome: true,
                         goodbye: true
+
                     };
 
-                // ─────────────────────────
+
+                // ═══════════════════════════
                 // GET GROUP INFORMATION
-                // ─────────────────────────
+                // ═══════════════════════════
 
                 const metadata =
-                    await socket.groupMetadata(id);
+                    await socket.groupMetadata(
+                        id
+                    );
 
                 const groupName =
-                    metadata?.subject || 'Group';
+                    metadata?.subject ||
+                    'Group';
 
-                // ─────────────────────────
+
+                // ═══════════════════════════
                 // BOT NAME
-                // ─────────────────────────
+                // ═══════════════════════════
 
                 const currentBotName =
-                    config?.BOT_NAME || 'ALEXA-MINI';
+                    config?.BOT_NAME ||
+                    'ALEXA-MINI';
 
-                // ─────────────────────────
-                // 👋 NEW MEMBER
-                // ─────────────────────────
+
+                // ═══════════════════════════
+                // NEW MEMBER
+                // ═══════════════════════════
 
                 if (
                     action === 'add' &&
@@ -309,13 +539,14 @@ function setupGroupParticipantHandlers(socket) {
                         of participants
                     ) {
 
-                        // Keep original JID, including @lid
                         const jid =
                             typeof participant === 'string'
                                 ? participant
                                 : participant?.id;
 
-                        if (!jid) continue;
+                        if (!jid) {
+                            continue;
+                        }
 
                         const number =
                             jid.split('@')[0];
@@ -339,17 +570,16 @@ function setupGroupParticipantHandlers(socket) {
                             id,
                             {
                                 text: welcomeText,
-                                mentions: [
-                                    jid
-                                ]
+                                mentions: [jid]
                             }
                         );
                     }
                 }
 
-                // ─────────────────────────
-                // 👋 MEMBER LEFT
-                // ─────────────────────────
+
+                // ═══════════════════════════
+                // MEMBER LEFT
+                // ═══════════════════════════
 
                 if (
                     (
@@ -369,7 +599,9 @@ function setupGroupParticipantHandlers(socket) {
                                 ? participant
                                 : participant?.id;
 
-                        if (!jid) continue;
+                        if (!jid) {
+                            continue;
+                        }
 
                         const number =
                             jid.split('@')[0];
@@ -389,9 +621,7 @@ function setupGroupParticipantHandlers(socket) {
                             id,
                             {
                                 text: goodbyeText,
-                                mentions: [
-                                    jid
-                                ]
+                                mentions: [jid]
                             }
                         );
                     }
@@ -408,9 +638,10 @@ function setupGroupParticipantHandlers(socket) {
     );
 }
 
-// ─────────────────────────────
+
+// ═════════════════════════════════════
 // LOAD ADMINS
-// ─────────────────────────────
+// ═════════════════════════════════════
 
 function loadAdmins() {
 
@@ -428,6 +659,7 @@ function loadAdmins() {
                     'utf8'
                 )
             );
+
         }
 
         return [];
@@ -443,9 +675,10 @@ function loadAdmins() {
     }
 }
 
-// ─────────────────────────────
+
+// ═════════════════════════════════════
 // FORMAT MESSAGE
-// ─────────────────────────────
+// ═════════════════════════════════════
 
 function formatMessage(
     title,
@@ -453,12 +686,17 @@ function formatMessage(
     footer
 ) {
 
-    return `*${title}*\n\n${content}\n\n> *${footer}*`;
+    return (
+        `*${title}*\n\n` +
+        `${content}\n\n` +
+        `> *${footer}*`
+    );
 }
 
-// ─────────────────────────────
+
+// ═════════════════════════════════════
 // GENERATE OTP
-// ─────────────────────────────
+// ═════════════════════════════════════
 
 function generateOTP() {
 
@@ -468,83 +706,639 @@ function generateOTP() {
     ).toString();
 }
 
+
+// ═════════════════════════════════════
+// TIME
+// ═════════════════════════════════════
+
+function getPakistanTimestamp() {
+
+    return moment()
+        .tz('Africa/Harare')
+        .format(
+            'YYYY-MM-DD HH:mm:ss'
+        );
+}
+
+
+// ═════════════════════════════════════
+// CLEAN DUPLICATE FILES
+// ═════════════════════════════════════
+//
+// FIXED:
+// Your old code used `owner`, but that
+// variable did not exist.
+//
+// It now correctly uses `githubOwner`.
+//
+// ═════════════════════════════════════
+
+async function cleanDuplicateFiles(number) {
+
+    try {
+
+        const sanitizedNumber =
+            getSanitizedNumber(number);
+
+        if (!sanitizedNumber) {
+            return;
+        }
+
+        const { data } =
+            await octokit.repos.getContent({
+
+                owner: githubOwner,
+
+                repo,
+
+                path: 'session'
+
+            });
+
+
+        // Make sure GitHub returned
+        // a directory listing.
+        if (!Array.isArray(data)) {
+            return;
+        }
+
+
+        const sessionFiles =
+            data
+                .filter(file =>
+                    file.name.startsWith(
+                        `empire_${sanitizedNumber}_`
+                    ) &&
+                    file.name.endsWith('.json')
+                )
+                .sort((a, b) => {
+
+                    const timeA =
+                        parseInt(
+                            a.name.match(
+                                /empire_\d+_(\d+)\.json/
+                            )?.[1] || 0
+                        );
+
+                    const timeB =
+                        parseInt(
+                            b.name.match(
+                                /empire_\d+_(\d+)\.json/
+                            )?.[1] || 0
+                        );
+
+                    return timeB - timeA;
+                });
+
+
+        const configFiles =
+            data.filter(file =>
+                file.name ===
+                `config_${sanitizedNumber}.json`
+            );
+
+
+        // Keep newest file only.
+        if (sessionFiles.length > 1) {
+
+            for (
+                let i = 1;
+                i < sessionFiles.length;
+                i++
+            ) {
+
+                try {
+
+                    await octokit.repos.deleteFile({
+
+                        owner: githubOwner,
+
+                        repo,
+
+                        path:
+                            `session/${sessionFiles[i].name}`,
+
+                        message:
+                            `Delete duplicate session file for ${sanitizedNumber}`,
+
+                        sha:
+                            sessionFiles[i].sha
+
+                    });
+
+                    console.log(
+                        `Deleted duplicate session file: ${sessionFiles[i].name}`
+                    );
+
+                } catch (deleteError) {
+
+                    console.error(
+                        `Failed deleting duplicate session file:`,
+                        deleteError.message
+                    );
+                }
+            }
+        }
+
+
+        if (configFiles.length > 0) {
+
+            console.log(
+                `Config file for ${sanitizedNumber} already exists`
+            );
+        }
+
+    } catch (error) {
+
+        console.error(
+            `Failed to clean duplicate files for ${number}:`,
+            error?.message || error
+        );
+    }
+}
+
+
+// ═════════════════════════════════════
+// COUNT COMMANDS
+// ═════════════════════════════════════
+
+let totalcmds = async () => {
+
+    try {
+
+        const filePath =
+            "./pair.js";
+
+        const mytext =
+            await fs.readFile(
+                filePath,
+                "utf-8"
+            );
+
+        const lines =
+            mytext.split("\n");
+
+        let count = 0;
+
+        for (
+            const line of lines
+        ) {
+
+            const trimmed =
+                line.trim();
+
+            if (
+                trimmed.startsWith("//") ||
+                trimmed.startsWith("/*")
+            ) {
+                continue;
+            }
+
+            if (
+                line.match(
+                    /^\s*case\s*['"][^'"]+['"]\s*:/
+                )
+            ) {
+                count++;
+            }
+        }
+
+        return count;
+
+    } catch (error) {
+
+        console.error(
+            "Error reading pair.js:",
+            error.message
+        );
+
+        return 0;
+    }
+};
+
+
+// ═════════════════════════════════════
+// ALEXA-MINI TEXT TO SPEECH
+// ═════════════════════════════════════
+
+async function generateTTS(text) {
+
+    try {
+
+        const url =
+            googleTTS.getAudioUrl(
+                text,
+                {
+                    lang: 'en',
+                    slow: false,
+                    host:
+                        'https://translate.google.com'
+                }
+            );
+
+        const response =
+            await axios.get(
+                url,
+                {
+                    responseType:
+                        'arraybuffer',
+
+                    timeout:
+                        15000
+                }
+            );
+
+        return Buffer.from(
+            response.data
+        );
+
+    } catch (error) {
+
+        console.error(
+            'TTS ERROR:',
+            error.message
+        );
+
+        return null;
+    }
+}
+
+
+// ═════════════════════════════════════
+// OTP / TIME / SESSION HELPERS
+// ═════════════════════════════════════
+
+// ─────────────────────────────
+// GENERATE OTP
+// ─────────────────────────────
+
+function generateOTP() {
+    return Math.floor(
+        100000 + Math.random() * 900000
+    ).toString();
+}
+
 // ─────────────────────────────
 // TIME
 // ─────────────────────────────
 
 function getPakistanTimestamp() {
-
     return moment()
-       .tz('Africa/Harare')
-       .format(
-            'YYYY-MM-DD HH:mm:ss'
-        );
-}
-
-async function cleanDuplicateFiles(number) {
-    try {
-        const sanitizedNumber = number.replace(/[^0-9]/g, '');
-        const { data } = await octokit.repos.getContent({
-            owner,
-            repo,
-            path: 'session'
-        });
-
-        const sessionFiles = data.filter(file =>
-            file.name.startsWith(`empire_${sanitizedNumber}_`) && file.name.endsWith('.json')
-        ).sort((a, b) => {
-            const timeA = parseInt(a.name.match(/empire_\d+_(\d+)\.json/)?.[1] || 0);
-            const timeB = parseInt(b.name.match(/empire_\d+_(\d+)\.json/)?.[1] || 0);
-            return timeB - timeA;
-        });
-
-        const configFiles = data.filter(file =>
-            file.name === `config_${sanitizedNumber}.json`
-        );
-
-        if (sessionFiles.length > 1) {
-            for (let i = 1; i < sessionFiles.length; i++) {
-                await octokit.repos.deleteFile({
-                    owner,
-                    repo,
-                    path: `session/${sessionFiles[i].name}`,
-                    message: `Delete duplicate session file for ${sanitizedNumber}`,
-                    sha: sessionFiles[i].sha
-                });
-                console.log(`Deleted duplicate session file: ${sessionFiles[i].name}`);
-            }
-        }
-
-        if (configFiles.length > 0) {
-            console.log(`Config file for ${sanitizedNumber} already exists`);
-        }
-    } catch (error) {
-        console.error(`Failed to clean duplicate files for ${number}:`, error);
-    }
-}
-
-let totalcmds = async () => {
-  try {
-    const filePath = "./pair.js";
-    const mytext = await fs.readFile(filePath, "utf-8");
-    const caseRegex = /(^|\n)\s*case\s*['"][^'"]+['"]\s*:/g;
-    const lines = mytext.split("\n");
-    let count = 0;
-    for (const line of lines) {
-      if (line.trim().startsWith("//") || line.trim().startsWith("/*")) continue;
-      if (line.match(/^\s*case\s*['"][^'"]+['"]\s*:/)) {
-        count++;
-      }
-    }
-    return count;
-  } catch (error) {
-    console.error("Error reading pair.js:", error.message);
-    return 0;
-  }
+        .tz('Africa/Harare')
+        .format('YYYY-MM-DD HH:mm:ss');
 }
 
 // ─────────────────────────────
-// ALEXA-MIN TEXT TO SPEECH
+// SANITIZE SESSION NUMBER
+// ─────────────────────────────
+
+function sanitizeSessionNumber(number) {
+    return String(number || '')
+        .replace(/[^0-9]/g, '');
+}
+
+// ─────────────────────────────
+// GET UNIQUE SESSION PATH
+// IMPORTANT:
+// Every WhatsApp number gets its own
+// permanent authentication directory.
+// ─────────────────────────────
+
+function getSessionPath(number) {
+    const sanitizedNumber = sanitizeSessionNumber(number);
+
+    if (!sanitizedNumber) {
+        throw new Error('Invalid session number');
+    }
+
+    return path.join(
+        SESSION_BASE_PATH,
+        sanitizedNumber
+    );
+}
+
+// ─────────────────────────────
+// ENSURE SESSION DIRECTORY
+// ─────────────────────────────
+
+async function ensureSessionDirectory(number) {
+    const sessionPath = getSessionPath(number);
+
+    await fs.ensureDir(sessionPath);
+
+    return sessionPath;
+}
+
+// ─────────────────────────────
+// CHECK IF SESSION EXISTS
+// ─────────────────────────────
+
+async function sessionExists(number) {
+    try {
+        const sessionPath = getSessionPath(number);
+
+        return await fs.pathExists(
+            sessionPath
+        );
+    } catch (error) {
+        console.error(
+            '[SESSION CHECK ERROR]',
+            error.message
+        );
+
+        return false;
+    }
+}
+
+// ─────────────────────────────
+// LIST LOCAL SESSIONS
+// DOES NOT DELETE ANYTHING
+// ─────────────────────────────
+
+async function getLocalSessions() {
+    try {
+        await fs.ensureDir(
+            SESSION_BASE_PATH
+        );
+
+        const entries =
+            await fs.readdir(
+                SESSION_BASE_PATH,
+                {
+                    withFileTypes: true
+                }
+            );
+
+        return entries
+            .filter(entry =>
+                entry.isDirectory()
+            )
+            .map(entry =>
+                entry.name
+            )
+            .filter(name =>
+                /^[0-9]+$/.test(name)
+            );
+
+    } catch (error) {
+
+        console.error(
+            '[LIST SESSIONS ERROR]',
+            error.message
+        );
+
+        return [];
+    }
+}
+
+// ─────────────────────────────
+// SESSION STATUS
+// ─────────────────────────────
+
+function getSessionStatus(number) {
+
+    const sanitizedNumber =
+        sanitizeSessionNumber(number);
+
+    const socket =
+        activeSockets.get(
+            sanitizedNumber
+        );
+
+    if (!socket) {
+        return {
+            number: sanitizedNumber,
+            online: false,
+            socket: null
+        };
+    }
+
+    return {
+        number: sanitizedNumber,
+        online: true,
+        socket
+    };
+}
+
+// ─────────────────────────────
+// REMOVE SOCKET FROM MEMORY
+// DOES NOT DELETE AUTH FILES
+// ─────────────────────────────
+
+function removeActiveSocket(number) {
+
+    const sanitizedNumber =
+        sanitizeSessionNumber(number);
+
+    if (!sanitizedNumber) {
+        return;
+    }
+
+    activeSockets.delete(
+        sanitizedNumber
+    );
+
+    socketCreationTime.delete(
+        sanitizedNumber
+    );
+
+    console.log(
+        `[SESSION] Removed socket from memory: ${sanitizedNumber}`
+    );
+}
+
+// ─────────────────────────────
+// REGISTER SOCKET
+// ─────────────────────────────
+
+function registerActiveSocket(
+    number,
+    socket
+) {
+
+    const sanitizedNumber =
+        sanitizeSessionNumber(number);
+
+    if (!sanitizedNumber) {
+        throw new Error(
+            'Cannot register socket: invalid number'
+        );
+    }
+
+    // Replace only the socket belonging
+    // to THIS number.
+    activeSockets.set(
+        sanitizedNumber,
+        socket
+    );
+
+    socketCreationTime.set(
+        sanitizedNumber,
+        Date.now()
+    );
+
+    console.log(
+        `[SESSION] Active sessions: ${activeSockets.size}`
+    );
+
+    console.log(
+        `[SESSION] Online: ${sanitizedNumber}`
+    );
+}
+
+// ─────────────────────────────
+// GITHUB SESSION CHECK
+// IMPORTANT:
+// DO NOT DELETE DUPLICATE SESSIONS.
+// Multiple WhatsApp accounts must be
+// allowed to exist at the same time.
+// ─────────────────────────────
+
+async function cleanDuplicateFiles(number) {
+
+    const sanitizedNumber =
+        sanitizeSessionNumber(number);
+
+    if (!sanitizedNumber) {
+        console.warn(
+            '[SESSION] Invalid number supplied'
+        );
+
+        return false;
+    }
+
+    try {
+
+        /*
+         * IMPORTANT:
+         *
+         * The old code deleted every session
+         * except one:
+         *
+         * if (sessionFiles.length > 1) {
+         *     deleteFile(...)
+         * }
+         *
+         * That behavior is NOT suitable for
+         * multi-session bots.
+         *
+         * We intentionally DO NOT delete
+         * session files here.
+         */
+
+        const result =
+            await octokit.repos.getContent({
+                owner: githubOwner,
+                repo: repo,
+                path: 'session'
+            });
+
+        const data =
+            Array.isArray(result.data)
+                ? result.data
+                : [];
+
+        const sessionFiles =
+            data.filter(file =>
+                file.name.includes(
+                    sanitizedNumber
+                )
+            );
+
+        console.log(
+            `[SESSION] ${sanitizedNumber}: ${sessionFiles.length} GitHub session file(s) found`
+        );
+
+        return true;
+
+    } catch (error) {
+
+        /*
+         * A missing GitHub session directory
+         * should NOT crash the bot.
+         */
+
+        if (
+            error?.status === 404 ||
+            error?.response?.status === 404
+        ) {
+
+            console.log(
+                '[SESSION] GitHub session directory does not exist yet.'
+            );
+
+            return true;
+        }
+
+        console.error(
+            `[SESSION] GitHub check failed for ${sanitizedNumber}:`,
+            error.message
+        );
+
+        return false;
+    }
+}
+
+// ─────────────────────────────
+// COUNT COMMANDS
+// ─────────────────────────────
+
+let totalcmds = async () => {
+
+    try {
+
+        const filePath =
+            "./pair.js";
+
+        const mytext =
+            await fs.readFile(
+                filePath,
+                "utf-8"
+            );
+
+        const lines =
+            mytext.split("\n");
+
+        let count = 0;
+
+        for (
+            const line
+            of lines
+        ) {
+
+            const trimmed =
+                line.trim();
+
+            if (
+                trimmed.startsWith("//") ||
+                trimmed.startsWith("/*")
+            ) {
+                continue;
+            }
+
+            if (
+                /^\s*case\s*['"][^'"]+['"]\s*:/
+                    .test(line)
+            ) {
+                count++;
+            }
+        }
+
+        return count;
+
+    } catch (error) {
+
+        console.error(
+            "Error reading pair.js:",
+            error.message
+        );
+
+        return 0;
+    }
+};
+
+// ─────────────────────────────
+// ALEXA-MINI TEXT TO SPEECH
 // ─────────────────────────────
 
 async function generateTTS(text) {
@@ -6248,98 +7042,64 @@ case 'img': {
             }
         );
 
-        // DuckDuckGo image search
-        const searchUrl =
-            `https://duckduckgo.com/`;
+        // ─────────────────────────
+        // ELITEPROTECH IMAGE API
+        // ─────────────────────────
 
-        const html =
+        const apiUrl =
+            'https://eliteprotech-apis.zone.id/image';
+
+        const response =
             await axios.get(
-                searchUrl,
+                apiUrl,
                 {
+                    params: {
+                        q: query
+                    },
+                    timeout: 20000,
                     headers: {
                         'User-Agent':
                             'Mozilla/5.0'
-                    },
-                    timeout: 15000
-                }
-            );
-
-        // Get vqd token
-        const vqdMatch =
-            html.data.match(
-                /vqd=['"]?([\d-]+)['"]?/
-            );
-
-        if (!vqdMatch) {
-            throw new Error(
-                'Image search service unavailable'
-            );
-        }
-
-        const vqd = vqdMatch[1];
-
-        const result =
-            await axios.get(
-                'https://duckduckgo.com/i.js',
-                {
-                    params: {
-                        l: 'us-en',
-                        o: 'json',
-                        q: query,
-                        vqd: vqd,
-                        f: ',,,',
-                        p: '1'
-                    },
-                    headers: {
-                        'User-Agent':
-                            'Mozilla/5.0',
-                        'Referer':
-                            'https://duckduckgo.com/'
-                    },
-                    timeout: 15000
-                }
-            );
-
-        const results =
-            Array.isArray(result.data?.results)
-                ? result.data.results
-                : [];
-
-        if (!results.length) {
-            await socket.sendMessage(
-                sender,
-                {
-                    text:
-                        `❌ No images found for *${query}*.`
-                },
-                { quoted: fakevCard }
-            );
-
-            await socket.sendMessage(
-                sender,
-                {
-                    react: {
-                        text: '❌',
-                        key: msg.key
                     }
                 }
             );
 
-            break;
+        const data = response.data;
+
+        if (
+            !data ||
+            data.success !== true ||
+            !Array.isArray(data.result) ||
+            data.result.length === 0
+        ) {
+            throw new Error(
+                'No images found'
+            );
         }
 
         // ─────────────────────────
-        // SEND UP TO 4 IMAGES
+        // GET IMAGE URLS
         // ─────────────────────────
 
         const images =
-            results
+            data.result
                 .map(item =>
                     item?.thumbnail ||
-                    item?.image
+                    item?.image ||
+                    item?.url
                 )
                 .filter(Boolean)
                 .slice(0, 4);
+
+        if (images.length === 0) {
+            throw new Error(
+                'API returned no usable images'
+            );
+        }
+
+        // ─────────────────────────
+        // SEND IMAGES
+        // ─────────────────────────
 
         let sent = 0;
 
@@ -6365,17 +7125,22 @@ case 'img': {
             } catch (imageError) {
 
                 console.error(
-                    '[IMG] Failed image:',
-                    imageError?.message || imageError
+                    '[IMG] Image send failed:',
+                    imageError?.message ||
+                    imageError
                 );
             }
         }
 
         if (sent === 0) {
             throw new Error(
-                'Could not download any images'
+                'Could not send any images'
             );
         }
+
+        // ─────────────────────────
+        // SUCCESS
+        // ─────────────────────────
 
         await socket.sendMessage(
             sender,
@@ -6387,19 +7152,19 @@ case 'img': {
             }
         );
 
-    } catch (e) {
+    } catch (error) {
 
         console.error(
-            '[IMG SEARCH ERROR]',
-            e?.stack || e
+            '[IMAGE SEARCH ERROR]:',
+            error?.stack || error
         );
 
         await socket.sendMessage(
             sender,
             {
                 text:
-                    `❌ *Image search failed.*\n\n` +
-                    `${e?.message || 'Service unavailable'}`
+                    `❌ *Image search failed!*\n\n` +
+                    `${error?.message || 'API unavailable'}`
             },
             { quoted: fakevCard }
         );
@@ -6675,79 +7440,167 @@ case 'ytvideo': {
     break;
 }
 case 'video': {
+
     try {
-        // Make absolutely sure query is a STRING
-        const query = Array.isArray(args)
-            ? args.join(' ').trim()
-            : String(args || '').trim();
+
+        // ─────────────────────────
+        // GET QUERY SAFELY
+        // ─────────────────────────
+
+        let query = '';
+
+        if (Array.isArray(args)) {
+            query = args
+                .map(item => String(item))
+                .join(' ')
+                .trim();
+        } else {
+            query = String(args || '')
+                .trim();
+        }
 
         if (!query) {
-            return await socket.sendMessage(sender, {
-                text:
+
+            return await socket.sendMessage(
+                sender,
+                {
+                    text:
 `❌ *Please enter a video name.*
 
 📌 *Example:*
-${config?.PREFIX || '.'}video chill`
-            }, { quoted: msg });
-        }
-
-        await socket.sendMessage(sender, {
-            text:
-`🔎 *Searching video...*
-
-🎬 ${query}`
-        }, { quoted: msg });
-
-        // Load yt-search safely
-        const ytSearch = require('yt-search');
-
-        // Make sure the imported module is callable
-        const searchFunction =
-            typeof ytSearch === 'function'
-                ? ytSearch
-                : ytSearch.default;
-
-        if (typeof searchFunction !== 'function') {
-            throw new Error(
-                'yt-search is not loaded correctly. Run: npm install yt-search'
+${config?.PREFIX || '.'}video alkaline`
+                },
+                { quoted: msg }
             );
         }
 
-        // Search YouTube
-        const search = await searchFunction(String(query));
+        // ─────────────────────────
+        // SEARCH MESSAGE
+        // ─────────────────────────
 
-        if (!search || !Array.isArray(search.videos) || !search.videos.length) {
-            return await socket.sendMessage(sender, {
-                text: `❌ *No videos found for:* ${query}`
-            }, { quoted: msg });
-        }
+        await socket.sendMessage(
+            sender,
+            {
+                text:
+`🔎 *Searching video...*
 
-        const video = search.videos[0];
-
-        if (!video || !video.url) {
-            throw new Error('YouTube search returned an invalid video.');
-        }
-
-        // SAFELY convert title to string
-        const title = String(video.title || 'YouTube Video');
-
-        const cleanTitle = title
-            .replace(/[\\/:*?"<>|]/g, '')
-            .trim()
-            .slice(0, 100) || 'youtube-video';
-
-        const channel = String(
-            video.author?.name || 'Unknown'
+🎬 ${query}`
+            },
+            { quoted: msg }
         );
 
-        const duration = String(
-            video.timestamp || 'Unknown'
-        );
+        // ─────────────────────────
+        // LOAD YT-SEARCH
+        // ─────────────────────────
 
-        const views =
+        const ytSearchModule =
+            require('yt-search');
+
+        const ytSearch =
+            typeof ytSearchModule === 'function'
+                ? ytSearchModule
+                : ytSearchModule?.default;
+
+        if (typeof ytSearch !== 'function') {
+            throw new Error(
+                'yt-search is not installed correctly. Run: npm install yt-search'
+            );
+        }
+
+        // ─────────────────────────
+        // YOUTUBE SEARCH
+        // ─────────────────────────
+
+        const search =
+            await ytSearch(query);
+
+        if (
+            !search ||
+            !Array.isArray(search.videos) ||
+            search.videos.length === 0
+        ) {
+
+            return await socket.sendMessage(
+                sender,
+                {
+                    text:
+                        `❌ *No videos found for:* ${query}`
+                },
+                { quoted: msg }
+            );
+        }
+
+        const video =
+            search.videos.find(
+                item =>
+                    item &&
+                    typeof item.url === 'string' &&
+                    item.url.startsWith('http')
+            );
+
+        if (!video) {
+            throw new Error(
+                'YouTube search returned no valid video.'
+            );
+        }
+
+        // ─────────────────────────
+        // NORMALIZE VIDEO DATA
+        // ─────────────────────────
+
+        const title =
+            typeof video.title === 'string'
+                ? video.title
+                : String(
+                    video.title?.text ||
+                    video.title?.name ||
+                    'YouTube Video'
+                );
+
+        const cleanTitle =
+            title
+                .replace(/[\\/:*?"<>|]/g, '')
+                .trim()
+                .slice(0, 100) ||
+            'youtube-video';
+
+        const channel =
+            typeof video.author?.name === 'string'
+                ? video.author.name
+                : String(
+                    video.author?.name ||
+                    video.author?.channel ||
+                    'Unknown'
+                );
+
+        const duration =
+            typeof video.timestamp === 'string'
+                ? video.timestamp
+                : String(
+                    video.timestamp ||
+                    video.duration?.timestamp ||
+                    'Unknown'
+                );
+
+        let views = 'Unknown';
+
+        if (
             typeof video.views === 'number'
-                ? video.views.toLocaleString()
-                : String(video.views || 'Unknown');
+        ) {
+            views =
+                video.views.toLocaleString();
+        } else if (
+            typeof video.views === 'string'
+        ) {
+            views = video.views;
+        }
+
+        const videoUrl =
+            String(video.url);
+
+        // ─────────────────────────
+        // CAPTION
+        // ─────────────────────────
 
         const caption =
 `🎬 *YOUTUBE VIDEO*
@@ -6757,143 +7610,234 @@ ${config?.PREFIX || '.'}video chill`
 ⏱️ *Duration:* ${duration}
 👁️ *Views:* ${views}
 
-🔗 ${video.url}
+🔗 ${videoUrl}
 
 ⏳ *Downloading video...*`;
 
-        // Send thumbnail first
-        if (video.thumbnail) {
-            await socket.sendMessage(sender, {
-                image: {
-                    url: video.thumbnail
-                },
-                caption: caption
-            }, { quoted: msg });
-        } else {
-            await socket.sendMessage(sender, {
-                text: caption
-            }, { quoted: msg });
-        }
-
-        // =========================
-        // YOUTUBE MP4 API
-        // =========================
-
-        const apiUrl =
-            `https://eliteprotech-apis.zone.id/ytmp4?url=${encodeURIComponent(video.url)}`;
-
-        console.log('YTMP4 REQUEST:', apiUrl);
-
-        const response = await axios.get(apiUrl, {
-            timeout: 120000,
-            headers: {
-                'User-Agent': 'Mozilla/5.0'
-            }
-        });
-
-        console.log(
-            'YTMP4 RESPONSE:',
-            JSON.stringify(response.data, null, 2)
-        );
-
-        const body = response.data;
-
-        // Handle different API response formats
-        let downloadUrl = null;
-
-        if (typeof body === 'string') {
-            downloadUrl = body;
-        }
-
-        if (!downloadUrl && body?.url) {
-            downloadUrl = body.url;
-        }
-
-        if (!downloadUrl && body?.download) {
-            downloadUrl =
-                typeof body.download === 'string'
-                    ? body.download
-                    : body.download?.url ||
-                      body.download?.downloadUrl;
-        }
-
-        if (!downloadUrl && body?.result) {
-            downloadUrl =
-                typeof body.result === 'string'
-                    ? body.result
-                    : body.result?.url ||
-                      body.result?.downloadUrl ||
-                      body.result?.download_url ||
-                      body.result?.videoUrl;
-        }
-
-        if (!downloadUrl && body?.data) {
-            downloadUrl =
-                typeof body.data === 'string'
-                    ? body.data
-                    : body.data?.url ||
-                      body.data?.downloadUrl ||
-                      body.data?.download_url ||
-                      body.data?.videoUrl;
-        }
+        // ─────────────────────────
+        // SEND THUMBNAIL
+        // ─────────────────────────
 
         if (
-            !downloadUrl ||
+            typeof video.thumbnail === 'string' &&
+            video.thumbnail.startsWith('http')
+        ) {
+
+            await socket.sendMessage(
+                sender,
+                {
+                    image: {
+                        url: video.thumbnail
+                    },
+                    caption: caption
+                },
+                { quoted: msg }
+            );
+
+        } else {
+
+            await socket.sendMessage(
+                sender,
+                {
+                    text: caption
+                },
+                { quoted: msg }
+            );
+        }
+
+        // ─────────────────────────
+        // YTMP4 API
+        // ─────────────────────────
+
+        const apiUrl =
+            'https://eliteprotech-apis.zone.id/ytmp4';
+
+        console.log(
+            '[YTMP4] Request:',
+            videoUrl
+        );
+
+        const response =
+            await axios.get(
+                apiUrl,
+                {
+                    params: {
+                        url: videoUrl
+                    },
+                    timeout: 120000,
+                    headers: {
+                        'User-Agent':
+                            'Mozilla/5.0'
+                    }
+                }
+            );
+
+        const body =
+            response?.data;
+
+        console.log(
+            '[YTMP4] Response:',
+            JSON.stringify(
+                body,
+                null,
+                2
+            )
+        );
+
+        // ─────────────────────────
+        // FIND DOWNLOAD URL
+        // ─────────────────────────
+
+        let downloadUrl = null;
+
+        if (
+            typeof body === 'string'
+        ) {
+
+            downloadUrl = body;
+
+        } else if (
+            typeof body?.url === 'string'
+        ) {
+
+            downloadUrl = body.url;
+
+        } else if (
+            typeof body?.download === 'string'
+        ) {
+
+            downloadUrl = body.download;
+
+        } else if (
+            body?.download &&
+            typeof body.download === 'object'
+        ) {
+
+            downloadUrl =
+                body.download.url ||
+                body.download.downloadUrl ||
+                body.download.download_url;
+
+        } else if (
+            typeof body?.result === 'string'
+        ) {
+
+            downloadUrl = body.result;
+
+        } else if (
+            body?.result &&
+            typeof body.result === 'object'
+        ) {
+
+            downloadUrl =
+                body.result.url ||
+                body.result.downloadUrl ||
+                body.result.download_url ||
+                body.result.videoUrl;
+
+        } else if (
+            typeof body?.data === 'string'
+        ) {
+
+            downloadUrl = body.data;
+
+        } else if (
+            body?.data &&
+            typeof body.data === 'object'
+        ) {
+
+            downloadUrl =
+                body.data.url ||
+                body.data.downloadUrl ||
+                body.data.download_url ||
+                body.data.videoUrl;
+        }
+
+        // ─────────────────────────
+        // VALIDATE DOWNLOAD URL
+        // ─────────────────────────
+
+        if (
             typeof downloadUrl !== 'string' ||
             !/^https?:\/\//i.test(downloadUrl)
         ) {
+
             console.error(
-                'INVALID YTMP4 RESPONSE:',
+                '[YTMP4] Invalid response:',
                 body
             );
 
             throw new Error(
-                'YTMP4 API did not return a valid video download URL.'
+                'Video API did not return a valid download URL.'
             );
         }
 
-        console.log(
-            'YTMP4 DOWNLOAD URL:',
-            downloadUrl
-        );
-
-        // =========================
+        // ─────────────────────────
         // SEND VIDEO
-        // =========================
+        // ─────────────────────────
 
-        await socket.sendMessage(sender, {
-            video: {
-                url: downloadUrl
-            },
-            mimetype: 'video/mp4',
-            fileName: `${cleanTitle}.mp4`,
-            caption:
+        await socket.sendMessage(
+            sender,
+            {
+                video: {
+                    url: downloadUrl
+                },
+                mimetype: 'video/mp4',
+                fileName:
+                    `${cleanTitle}.mp4`,
+                caption:
 `🎬 *${title}*
 
 ✅ *VIDEO DOWNLOADED*
 
 > ᑭOᗯEᖇEᗪ ᗷY ᗩᒪE᙭ᗩ-ᗰIᑎ`
-        }, { quoted: msg });
-
-        await socket.sendMessage(sender, {
-            react: {
-                text: '✅',
-                key: msg.key
-            }
-        });
-
-    } catch (error) {
-        console.error(
-            'VIDEO ERROR:',
-            error.stack || error
+            },
+            { quoted: msg }
         );
 
-        await socket.sendMessage(sender, {
-            text:
+        // ─────────────────────────
+        // SUCCESS
+        // ─────────────────────────
+
+        await socket.sendMessage(
+            sender,
+            {
+                react: {
+                    text: '✅',
+                    key: msg.key
+                }
+            }
+        );
+
+    } catch (error) {
+
+        console.error(
+            '[VIDEO ERROR]',
+            error?.stack || error
+        );
+
+        await socket.sendMessage(
+            sender,
+            {
+                text:
 `❌ *Video Error:*
 
-${error.message || 'Something went wrong.'}`
-        }, { quoted: msg });
+${error?.message || 'Something went wrong.'}`
+            },
+            { quoted: msg }
+        );
+
+        try {
+            await socket.sendMessage(
+                sender,
+                {
+                    react: {
+                        text: '❌',
+                        key: msg.key
+                    }
+                }
+            );
+        } catch {}
     }
 
     break;
