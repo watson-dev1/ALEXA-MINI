@@ -862,7 +862,7 @@ async function cleanDuplicateFiles(number) {
 // COUNT COMMANDS
 // ═════════════════════════════════════
 
-let totalcmds = async () => {
+/*let totalcmds = async () => {
 
     try {
 
@@ -914,7 +914,7 @@ let totalcmds = async () => {
 
         return 0;
     }
-};
+};*/
 
 
 // ═════════════════════════════════════
