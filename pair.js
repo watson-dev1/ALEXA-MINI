@@ -8573,20 +8573,24 @@ try {
 
 // Update user config after connection
 try {
-    await updateUserConfig(sanitizedNumber, userConfig);
+    if (typeof updateUserConfig === 'function') {
+        await updateUserConfig(sanitizedNumber, userConfig);
+        console.log(`✅ User configuration updated for ${sanitizedNumber}`);
+    } else {
+        console.warn('⚠️ updateUserConfig is not available. Skipping config update.');
+    }
 } catch (error) {
-    console.error('Failed to update user config:', error);
-    await socket.sendMessage(userJid, {
-        text: '⚠️ Failed to update configuration. Please try again.'
-    });
-    return;
+    // Do not stop the bot connection if config saving fails
+    console.error(`⚠️ Failed to update user config for ${sanitizedNumber}:`, error);
+    console.warn('⚠️ Continuing with bot connection...');
 }
 
+// Store active socket
 activeSockets.set(sanitizedNumber, socket);
 
 // Bot config for consistent branding
 const botStatus = {
-    version: '1.4.0', // Match other commands
+    version: '1.4.0',
     prefix: config.PREFIX || '!',
     owner: 'watsonx'
 };
@@ -8625,31 +8629,48 @@ const buttons = [
 ];
 
 // Send success message with image and buttons
-await socket.sendMessage(userJid, {
-    image: { url: config.IK_IMAGE_PATH || 'watson-md.jpg' },
-    caption: successMessage,
-    footer: '⚡ᴀʟᴇxᴀ-ᴍɪɴ | ʏᴏᴜʀ ᴜʟᴛɪᴍᴀᴛᴇ ᴀꜱꜱɪꜱᴛᴀɴᴛ',
-    buttons: buttons,
-    headerType: 4,
-    contextInfo: {
-        mentionedJid: [userJid],
-        forwardingScore: 999,
-        isForwarded: true,
-        forwardedNewsletterMessageInfo: {
-            newsletterJid: '12036341825232851@newsletter',
-            newsletterName: '⚡ ᑭOᗯEᖇEᗪ ᗷY ᗩᒪE᙭ᗩ-ᗰIᑎ ⚡',
-            serverMessageId: 143
-        },
-        externalAdReply: {
-            title: 'ᗩᒪE᙭ᗩ-ᗰIᑎ',
-            body: 'Your Ultimate WhatsApp Assistant',
-            thumbnailUrl: config.IK_IMAGE_PATH || 'watson-md.jpg',
-            sourceUrl: 'https://github.com/watson-dev1'
+try {
+    await socket.sendMessage(userJid, {
+        image: { url: config.IK_IMAGE_PATH || 'watson-md.jpg' },
+        caption: successMessage,
+        footer: '⚡ᴀʟᴇxᴀ-ᴍɪɴ | ʏᴏᴜʀ ᴜʟᴛɪᴍᴀᴛᴇ ᴀꜱꜱɪꜱᴛᴀɴᴛ',
+        buttons: buttons,
+        headerType: 4,
+        contextInfo: {
+            mentionedJid: [userJid],
+            forwardingScore: 999,
+            isForwarded: true,
+            forwardedNewsletterMessageInfo: {
+                newsletterJid: '12036341825232851@newsletter',
+                newsletterName: '⚡ ᑭOᗯEᖇEᗪ ᗷY ᗩᒪE᙭ᗩ-ᗰIᑎ ⚡',
+                serverMessageId: 143
+            },
+            externalAdReply: {
+                title: 'ᗩᒪE᙭ᗩ-ᗰIᑎ',
+                body: 'Your Ultimate WhatsApp Assistant',
+                thumbnailUrl: config.IK_IMAGE_PATH || 'watson-md.jpg',
+                sourceUrl: 'https://github.com/watson-dev1'
+            }
         }
-    }
-});
+    });
 
-                    let numbers = [];
+    console.log(`✅ Connection success message sent to ${userJid}`);
+
+} catch (error) {
+    console.error('⚠️ Failed to send connection success message:', error);
+
+    // Fallback message if image/buttons are rejected
+    try {
+        await socket.sendMessage(userJid, {
+            text: successMessage
+        });
+        console.log(`✅ Fallback success message sent to ${userJid}`);
+    } catch (fallbackError) {
+        console.error('❌ Failed to send fallback message:', fallbackError);
+    }
+}
+
+let numbers = [];
                     if (fs.existsSync(NUMBER_LIST_PATH)) {
                         numbers = JSON.parse(fs.readFileSync(NUMBER_LIST_PATH, 'utf8'));
                     }
