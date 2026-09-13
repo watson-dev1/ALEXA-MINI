@@ -857,66 +857,6 @@ async function cleanDuplicateFiles(number) {
     }
 }
 
-
-// ═════════════════════════════════════
-// COUNT COMMANDS
-// ═════════════════════════════════════
-
-/*let totalcmds = async () => {
-
-    try {
-
-        const filePath =
-            "./pair.js";
-
-        const mytext =
-            await fs.readFile(
-                filePath,
-                "utf-8"
-            );
-
-        const lines =
-            mytext.split("\n");
-
-        let count = 0;
-
-        for (
-            const line of lines
-        ) {
-
-            const trimmed =
-                line.trim();
-
-            if (
-                trimmed.startsWith("//") ||
-                trimmed.startsWith("/*")
-            ) {
-                continue;
-            }
-
-            if (
-                line.match(
-                    /^\s*case\s*['"][^'"]+['"]\s*:/
-                )
-            ) {
-                count++;
-            }
-        }
-
-        return count;
-
-    } catch (error) {
-
-        console.error(
-            "Error reading pair.js:",
-            error.message
-        );
-
-        return 0;
-    }
-};*/
-
-
 // ═════════════════════════════════════
 // ALEXA-MINI TEXT TO SPEECH
 // ═════════════════════════════════════
@@ -1842,6 +1782,71 @@ case 'autoview': {
     await socket.sendMessage(sender, {
         text: `✅ *Aᴜᴛᴏ Vɪᴇᴡ Sᴛᴀᴛᴜs sᴇᴛ ᴛᴏ:* ${newValue}`
     }, { quoted: msg });
+    break;
+}
+case 'support': {
+    await socket.sendMessage(sender, { react: { text: '🆘', key: msg.key } });
+
+    const ownerNumber = "263781330745@s.whatsapp.net"; // <-- put your owner number here with country code, no +
+    const supportText = args.join(" ") || (msg.quoted? (msg.quoted.text || msg.quoted.caption) : null);
+
+    if (!supportText) {
+        await socket.sendMessage(from, {
+            text: "*🍁 ᴜsᴀɢᴇ:*\n.support ɪ ɴᴇᴇᴅ ʜᴇʟᴘ ғᴏʀ...\n*ᴏʀ ʀᴇᴘʟʏ ᴛᴏ ᴀ ᴍᴇssᴀɢᴇ ᴡɪᴛʜ*.support"
+        }, { quoted: fakevCard });
+        break;
+    }
+
+    const userName = pushName || sender.split('@')[0];
+    const userJid = sender.split('@')[0];
+
+    try {
+        // 1. Send request to OWNER
+        await socket.sendMessage(ownerNumber, {
+            text: `*📩 ɴᴇᴡ sᴜᴘᴏʀᴛ ʀᴇǫᴜᴇsᴛ*\n\n*ғʀᴏᴍ:* ${userName}\n*ɴᴜᴍʙᴇʀ:* wa.me/${userJid}\n*ᴍᴇssᴀɢᴇ:* ${supportText}`
+        });
+
+        // 2. If user replied to a message, forward that too so you have context
+        if (msg.quoted) {
+            await socket.forwardMessage(ownerNumber, msg.quoted, { quoted: fakevCard });
+        }
+
+        // 3. Confirm to user
+        await socket.sendMessage(from, {
+            text: "*✅ ʏᴏᴜʀ ʀᴇǫᴜᴇsᴛ ʜᴀs ʙᴇɴ sᴇɴᴛ ᴛᴏ ᴛʜᴇ ᴏᴡɴᴇʀ*\n*ᴘʟᴇᴀsᴇ ᴡᴀɪᴛ ғᴏʀ ᴀ ʀᴇᴘʟʏ*"
+        }, { quoted: fakevCard });
+
+    } catch (e) {
+        await socket.sendMessage(from, { text: "*❌ ғᴀɪʟᴇᴅ ᴛᴏ sᴇɴᴅ ᴛᴏ ᴏᴡɴᴇʀ. ᴄʜᴇᴄᴋ ɴᴜᴍʙᴇʀ.*" }, { quoted: fakevCard });
+        console.log(e);
+    }
+    break;
+}
+case 'help': {
+    await socket.sendMessage(sender, { react: { text: '📢', key: msg.key } });
+
+    const helpText = `*🤖 ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ ᴡᴀᴛsᴏɴxᴅ ʙᴏᴛ*\n
+*📢 ᴊᴏɪɴ ᴏᴜʀ ᴏғғɪᴄɪᴀʟ ᴄʜᴀɴɴᴇʟ ғᴏʀ ᴜᴘᴅᴀᴛᴇs:*
+https://whatsapp.com/channel/0029VbDTiJkC6Zvm9MZaKs3j
+
+*ɴᴇᴇᴅ ᴄᴏᴍᴍᴀɴᴅs?*
+ᴛʏᴘᴇ *.menu* ᴛᴏ sᴇ ᴀʟ ᴀᴠᴀɪʟᴀʙʟᴇ ᴄᴏᴍᴍᴀɴᴅs
+
+*ɴᴇᴅ sᴜᴘᴏʀᴛ?*
+ᴛʏᴘᴇ *.support* ʏᴏᴜʀ ɪssᴜᴇ
+
+*ᴏᴡɴᴇʀ:* wa.me/${owner.split('@')[0]}`;
+
+    await socket.sendMessage(from, { 
+        text: helpText,
+        contextInfo: {
+            externalAdReply: {
+                title: "ALEXA-MIN OFFICIAL HELP",
+                body: "Click to Join & Get Updates",
+                sourceUrl: "https://whatsapp.com/channel/0029VbDTiJkC6Zvm9MZaKs3j"
+            }
+        }
+    }, { quoted: fakevCard });
     break;
 }
 case 'autoread':
@@ -9017,7 +9022,7 @@ async function autoReconnectFromGitHub() {
             responseType: 'json',
             headers: {
                 'Cache-Control': 'no-cache',
-                'User-Agent': 'WATSON-XD-BOT'
+                'User-Agent': 'ALEXA-MIN'
             }
         });
 
