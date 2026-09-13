@@ -1564,48 +1564,69 @@ function setupCommandHandlers(socket, number, userConfig) {
             await m.react(randomReaction);
         }
 
-// ===== ADD THESE 2 NEW FEATURES BELOW =====
+// ===== AFK VARIABLES (PUT AT TOP OF FILE) =====
 let AFK = 'false';
 let AFK_REASON = '';
 
+
+// ===== INSIDE YOUR MESSAGE HANDLER =====
+
 // ===== AUTO READ =====
-if (userConfig.AUTO_READ === 'true' &&!msg.key.fromMe) {
+if (userConfig.AUTO_READ === 'true' && !msg.key.fromMe) {
     await socket.readMessages([msg.key]);
 }
 
+
 // ===== ANTI STATUS MENTION SYSTEM =====
 if (msg.key.remoteJid.endsWith('@g.us') && userConfig.ANTI_STATUS_MENTION === 'true') {
-    const messageContent = JSON.stringify(msg.message);
-    const type = Object.keys(msg.message || {})[0] || ''; // <-- FIXED: type was not defined
 
-    // 1. If someone forwards/uploads a status to group
-    // 2. If someone mentions status@broadcast
+    const messageContent = JSON.stringify(msg.message);
+    const type = Object.keys(msg.message || {})[0] || '';
+
     if (messageContent.includes('status@broadcast') || type === 'statusMessage') {
 
         if (userConfig.ANTI_STATUS_ACTION === 'delete') {
-            await socket.sendMessage(msg.key.remoteJid, { delete: msg.key });
-            await m.reply(`*🫶 Anti Status Mention Added 🚫*\n\n@${senderNumber} posted status in group\nMessage deleted.`, { mentions: [senderNumber + '@s.whatsapp.net'] });
+            await socket.sendMessage(msg.key.remoteJid, {
+                delete: msg.key
+            });
+
+            await m.reply(
+                `*🫶 Anti Status Mention Activated 🚫*\n\n@${senderNumber} posted status in group.\nMessage deleted.`,
+                { mentions: [senderNumber + '@s.whatsapp.net'] }
+            );
         }
 
         if (userConfig.ANTI_STATUS_ACTION === 'warn') {
-            await m.reply(`*🫶 Anti Status Mention Added 🚫*\n\n@${senderNumber} don't post status here!`, { mentions: [senderNumber + '@s.whatsapp.net'] });
+            await m.reply(
+                `*🫶 Anti Status Mention Activated 🚫*\n\n@${senderNumber} don't post status here!`,
+                { mentions: [senderNumber + '@s.whatsapp.net'] }
+            );
         }
 
-        return; // stop processing
+        return;
     }
 }
 
+
 // ===== AFK SYSTEM =====
-if (AFK === 'true' &&!msg.key.fromMe && msg.key.remoteJid.endsWith('@s.whatsapp.net')) {
-    await m.reply(`😴 *I'M CURRENTLY AWAY*\nReason: ${AFK_REASON}\n\nI will reply when I'm back.`);
+if (
+    AFK === 'true' &&
+    !msg.key.fromMe &&
+    msg.key.remoteJid.endsWith('@s.whatsapp.net')
+) {
+    await m.reply(
+        `😴 *I'M CURRENTLY AWAY*\n\n*Reason:* ${AFK_REASON}\n\nI will reply when I'm back.`
+    );
 }
 
-// Auto turn off AFK when owner sends any message
+
+// Auto disable AFK when owner sends a message
 if (AFK === 'true' && msg.key.fromMe) {
     AFK = 'false';
     AFK_REASON = '';
     console.log('AFK Auto Disabled');
 }
+
 
 const quoted =
     type === "extendedTextMessage" &&
@@ -1787,66 +1808,43 @@ case 'autoview': {
 case 'support': {
     await socket.sendMessage(sender, { react: { text: '🆘', key: msg.key } });
 
-    const ownerNumber = "263781330745@s.whatsapp.net"; // <-- put your owner number here with country code, no +
-    const supportText = args.join(" ") || (msg.quoted? (msg.quoted.text || msg.quoted.caption) : null);
+    const supportGroup = "https://chat.whatsapp.com/FK2HSe9McfzD8QAFKyLA1W?s=cl&p=a&mlu=4&ilr=4";
+    const supportChannel = "https://whatsapp.com/channel/0029VbDYkbkBqbrIQLvtP926";
 
-    if (!supportText) {
-        await socket.sendMessage(from, {
-            text: "*🍁 ᴜsᴀɢᴇ:*\n.support ɪ ɴᴇᴇᴅ ʜᴇʟᴘ ғᴏʀ...\n*ᴏʀ ʀᴇᴘʟʏ ᴛᴏ ᴀ ᴍᴇssᴀɢᴇ ᴡɪᴛʜ*.support"
-        }, { quoted: fakevCard });
-        break;
-    }
+    await socket.sendMessage(from, {
+        text: `*🆘 ᴡᴀᴛsᴏɴxᴅ sᴜᴘᴘᴏʀᴛ*\n\n*ᴊᴏɪɴ ᴏᴜʀ sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ:*\n${supportGroup}\n\n*ᴏʀ ᴊᴏɪɴ ᴏᴜʀ ᴏғғɪᴄɪᴀʟ ᴄʜᴀɴɴᴇʟ:*\n${supportChannel}\n\n*ᴡᴇ ᴡɪʟʟ ʜᴇʟᴘ ʏᴏᴜ ᴀs sᴏᴏɴ ᴀs ᴘᴏssɪʙʟᴇ ❤️*`
+    }, { quoted: fakevCard });
 
-    const userName = pushName || sender.split('@')[0];
-    const userJid = sender.split('@')[0];
-
-    try {
-        // 1. Send request to OWNER
-        await socket.sendMessage(ownerNumber, {
-            text: `*📩 ɴᴇᴡ sᴜᴘᴏʀᴛ ʀᴇǫᴜᴇsᴛ*\n\n*ғʀᴏᴍ:* ${userName}\n*ɴᴜᴍʙᴇʀ:* wa.me/${userJid}\n*ᴍᴇssᴀɢᴇ:* ${supportText}`
-        });
-
-        // 2. If user replied to a message, forward that too so you have context
-        if (msg.quoted) {
-            await socket.forwardMessage(ownerNumber, msg.quoted, { quoted: fakevCard });
-        }
-
-        // 3. Confirm to user
-        await socket.sendMessage(from, {
-            text: "*✅ ʏᴏᴜʀ ʀᴇǫᴜᴇsᴛ ʜᴀs ʙᴇɴ sᴇɴᴛ ᴛᴏ ᴛʜᴇ ᴏᴡɴᴇʀ*\n*ᴘʟᴇᴀsᴇ ᴡᴀɪᴛ ғᴏʀ ᴀ ʀᴇᴘʟʏ*"
-        }, { quoted: fakevCard });
-
-    } catch (e) {
-        await socket.sendMessage(from, { text: "*❌ ғᴀɪʟᴇᴅ ᴛᴏ sᴇɴᴅ ᴛᴏ ᴏᴡɴᴇʀ. ᴄʜᴇᴄᴋ ɴᴜᴍʙᴇʀ.*" }, { quoted: fakevCard });
-        console.log(e);
-    }
     break;
 }
+
 case 'help': {
     await socket.sendMessage(sender, { react: { text: '📢', key: msg.key } });
 
-    const helpText = `*🤖 ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ ᴡᴀᴛsᴏɴxᴅ ʙᴏᴛ*\n
+    const helpText = `*🤖 ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ ᴡᴀᴛsᴏɴxᴅ ʙᴏᴛ*
+
 *📢 ᴊᴏɪɴ ᴏᴜʀ ᴏғғɪᴄɪᴀʟ ᴄʜᴀɴɴᴇʟ ғᴏʀ ᴜᴘᴅᴀᴛᴇs:*
-https://whatsapp.com/channel/0029VbDTiJkC6Zvm9MZaKs3j
+https://whatsapp.com/channel/0029VbDYkbkBqbrIQLvtP926
 
 *ɴᴇᴇᴅ ᴄᴏᴍᴍᴀɴᴅs?*
-ᴛʏᴘᴇ *.menu* ᴛᴏ sᴇ ᴀʟ ᴀᴠᴀɪʟᴀʙʟᴇ ᴄᴏᴍᴍᴀɴᴅs
+ᴛʏᴘᴇ *.menu* ᴛᴏ sᴇᴇ ᴀʟʟ ᴀᴠᴀɪʟᴀʙʟᴇ ᴄᴏᴍᴍᴀɴᴅs
 
-*ɴᴇᴅ sᴜᴘᴏʀᴛ?*
-ᴛʏᴘᴇ *.support* ʏᴏᴜʀ ɪssᴜᴇ
+*ɴᴇᴇᴅ sᴜᴘᴘᴏʀᴛ?*
+ᴛʏᴘᴇ *.support* ᴛᴏ ᴊᴏɪɴ ᴏᴜʀ sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ
 
 *ᴏᴡɴᴇʀ:* wa.me/${owner.split('@')[0]}`;
 
-    await socket.sendMessage(from, { 
+    await socket.sendMessage(from, {
         text: helpText,
         contextInfo: {
             externalAdReply: {
-                title: "ALEXA-MIN OFFICIAL HELP",
+                title: "WATSONXD OFFICIAL HELP",
                 body: "Click to Join & Get Updates",
-                sourceUrl: "https://whatsapp.com/channel/0029VbDTiJkC6Zvm9MZaKs3j"
+                sourceUrl: "https://whatsapp.com/channel/0029VbDYkbkBqbrIQLvtP926"
             }
         }
     }, { quoted: fakevCard });
+
     break;
 }
 case 'autoread':
@@ -1882,7 +1880,17 @@ case 'busy':
 case 'brb':
 case 'away': {
     if (!args[0]) {
-        return m.reply(`*STATUS COMMAND*\n\n*Usage:*\n.${command} on <reason> = Turn status ON\n.${command} off = Turn status OFF\n\n*Examples:*\n.${command} on In a meeting\n.${command} off\n\n*Current Status:* ${AFK === 'true'? `ON\nReason: ${AFK_REASON}` : 'OFF'}`);
+        return m.reply(`*😴 STATUS COMMAND*
+
+*Usage:*
+.${command} on <reason> → Turn status ON
+.${command} off → Turn status OFF
+
+*Examples:*
+.${command} on In a meeting
+.${command} off
+
+*Current Status:* ${AFK === 'true' ? `ON\nReason: ${AFK_REASON}` : 'OFF'}`);
     }
 
     let action = args[0].toLowerCase();
@@ -1890,43 +1898,68 @@ case 'away': {
     if (action === 'on') {
         AFK = 'true';
         AFK_REASON = args.slice(1).join(' ') || 'No reason provided';
-        return m.reply(`😴 *Status: AWAY*\nReason: ${AFK_REASON}\n\nPeople who DM you will get auto reply.`);
+
+        return m.reply(`😴 *STATUS: AWAY*
+
+*Reason:* ${AFK_REASON}
+
+People who DM you will receive an auto reply.`);
     }
 
     if (action === 'off') {
         AFK = 'false';
         AFK_REASON = '';
-        return m.reply(`✅ *Status: BACK ONLINE*\nWelcome back!`);
+
+        return m.reply(`✅ *STATUS: BACK ONLINE*
+
+Welcome back!`);
     }
 
-    // If user types.afk busy or.busy sleeping (without on/off)
+    // Example: .afk sleeping / .busy meeting
     AFK = 'true';
     AFK_REASON = args.join(' ') || 'No reason provided';
-    return m.reply(`😴 *Status: AWAY*\nReason: ${AFK_REASON}\n\nPeople who DM you will get auto reply.`);
+
+    return m.reply(`😴 *STATUS: AWAY*
+
+*Reason:* ${AFK_REASON}
+
+People who DM you will receive an auto reply.`);
 }
+
+
 case 'statuslike':
 case 'autolike': {
     if (!isOwner) {
-        await socket.sendMessage(sender, { text: "*📛 ᴛʜɪs ɪs ᴀɴ ᴏᴡɴᴇʀ ᴄᴏᴍᴍᴀɴᴅ.*" }, { quoted: msg });
+        await socket.sendMessage(sender, {
+            text: "*📛 ᴛʜɪs ɪs ᴀɴ ᴏᴡɴᴇʀ ᴄᴏᴍᴍᴀɴᴅ.*"
+        }, { quoted: msg });
         break;
     }
+
     if (!args[0]) {
         return await socket.sendMessage(sender, {
-            text: `📌 *Usᴀɢᴇ:* ${userConfig.PREFIX}autolike on/off\n*Cᴜʀʀᴇɴᴛ:* ${userConfig.AUTO_LIKE_STATUS}`
+            text: `📌 *Usage:* ${userConfig.PREFIX}autolike on/off\n\n*Current:* ${userConfig.AUTO_LIKE_STATUS}`
         }, { quoted: msg });
     }
+
     const value = args[0].toLowerCase();
-    if (value!== 'on' && value!== 'off') {
+
+    if (value !== 'on' && value !== 'off') {
         return await socket.sendMessage(sender, {
-            text: '❌ *Pʟᴇᴀsᴇ ᴜsᴇ:* on ᴏʀ off'
+            text: "❌ *Please use:* on or off"
         }, { quoted: msg });
     }
-    const newValue = value === 'on'? 'true' : 'false';
+
+    const newValue = value === 'on' ? 'true' : 'false';
+
     userConfig.AUTO_LIKE_STATUS = newValue;
+
     await updateUserConfig(sanitizedNumber, userConfig);
+
     await socket.sendMessage(sender, {
-        text: `✅ *Aᴜᴛᴏ Lɪᴋᴇ Sᴛᴀᴛᴜs sᴇᴛ ᴛᴏ:* ${newValue}`
+        text: `✅ *Auto Like Status Set To:* ${newValue}`
     }, { quoted: msg });
+
     break;
 }
 case 'autoreact':
