@@ -2051,27 +2051,42 @@ case 'block': {
     }
 
     try {
-        // If target is already a WhatsApp JID, preserve it.
-        // This is important for @lid users.
+        // Convert object JID to string
+        if (typeof target === 'object') {
+            if (target.user && target.server) {
+                target = `${target.user}@${target.server}`;
+            } else if (target.jid) {
+                target = target.jid;
+            } else if (target.id) {
+                target = target.id;
+            }
+        }
+
+        // Final safety check
+        if (typeof target !== 'string') {
+            return m.reply('❌ Invalid user JID');
+        }
+
+        // Add WhatsApp JID if only number was provided
         if (!target.includes('@')) {
             target = target.replace(/[^0-9]/g, '') + '@s.whatsapp.net';
         }
 
-        console.log(`[BLOCK] Target: ${target}`);
+        console.log(`[BLOCK] Target:`, target);
 
         await socket.updateBlockStatus(target, 'block');
 
-        const displayNumber = target.split('@')[0];
+        const display = target.split('@')[0];
 
         await m.reply(
-            `🚫 *Blocked:* @${displayNumber}`,
+            `🚫 *Blocked:* @${display}`,
             {
                 mentions: [target]
             }
         );
 
     } catch (e) {
-        console.error('[BLOCK] Error:', e?.stack || e);
+        console.error('[BLOCK ERROR]', e?.stack || e);
 
         await m.reply(
             `❌ Failed to block: ${e?.message || e}`
@@ -2102,26 +2117,42 @@ case 'unblock': {
     }
 
     try {
-        // Preserve @lid or other existing JID
+        // Convert object JID to string
+        if (typeof target === 'object') {
+            if (target.user && target.server) {
+                target = `${target.user}@${target.server}`;
+            } else if (target.jid) {
+                target = target.jid;
+            } else if (target.id) {
+                target = target.id;
+            }
+        }
+
+        // Final safety check
+        if (typeof target !== 'string') {
+            return m.reply('❌ Invalid user JID');
+        }
+
+        // Add WhatsApp JID if only number was provided
         if (!target.includes('@')) {
             target = target.replace(/[^0-9]/g, '') + '@s.whatsapp.net';
         }
 
-        console.log(`[UNBLOCK] Target: ${target}`);
+        console.log(`[UNBLOCK] Target:`, target);
 
         await socket.updateBlockStatus(target, 'unblock');
 
-        const displayNumber = target.split('@')[0];
+        const display = target.split('@')[0];
 
         await m.reply(
-            `✅ *Unblocked:* @${displayNumber}`,
+            `✅ *Unblocked:* @${display}`,
             {
                 mentions: [target]
             }
         );
 
     } catch (e) {
-        console.error('[UNBLOCK] Error:', e?.stack || e);
+        console.error('[UNBLOCK ERROR]', e?.stack || e);
 
         await m.reply(
             `❌ Failed to unblock: ${e?.message || e}`
