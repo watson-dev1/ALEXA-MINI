@@ -40,10 +40,14 @@ const {
 // RESTRICTED NUMBER DATABASE
 // ═════════════════════════════════════
 
-const restrictedFile = './DB/restricted.json';
+//const fs = require('fs');
+//const path = require('path');
 
-if (!fs.existsSync('./DB')) {
-    fs.mkdirSync('./DB', { recursive: true });
+const restrictedFile = path.join(__dirname, 'DB', 'restricted.json');
+
+// Ensure folder + file exist
+if (!fs.existsSync(path.dirname(restrictedFile))) {
+    fs.mkdirSync(path.dirname(restrictedFile), { recursive: true });
 }
 
 if (!fs.existsSync(restrictedFile)) {
@@ -58,28 +62,15 @@ if (!fs.existsSync(restrictedFile)) {
 
 function loadRestrictedData() {
     try {
-        const data = JSON.parse(
-            fs.readFileSync(restrictedFile, 'utf8')
-        );
+        const raw = fs.readFileSync(restrictedFile, 'utf8');
+        const data = JSON.parse(raw);
 
         return {
-            numbers: Array.isArray(data.numbers)
-                ? data.numbers
-                : [],
-
-            warnings:
-                data.warnings &&
-                typeof data.warnings === 'object'
-                    ? data.warnings
-                    : {}
+            numbers: Array.isArray(data.numbers) ? data.numbers.map(n => String(n).replace(/[^0-9]/g, '')) : [],
+            warnings: data.warnings && typeof data.warnings === 'object' && !Array.isArray(data.warnings) ? data.warnings : {}
         };
-
     } catch (error) {
-        console.error(
-            'Failed to load restricted database:',
-            error
-        );
-
+        console.error('Failed to load restricted database:', error.message);
         return {
             numbers: [],
             warnings: {}
@@ -89,19 +80,14 @@ function loadRestrictedData() {
 
 function saveRestrictedData(data) {
     try {
-        fs.writeFileSync(
-            restrictedFile,
-            JSON.stringify(data, null, 2)
-        );
-
+        // atomic write - prevents file corruption when 2 messages come at once
+        const tmpFile = restrictedFile + '.tmp';
+        fs.writeFileSync(tmpFile, JSON.stringify(data, null, 2));
+        fs.renameSync(tmpFile, restrictedFile);
     } catch (error) {
-        console.error(
-            'Failed to save restricted database:',
-            error
-        );
+        console.error('Failed to save restricted database:', error.message);
     }
 }
-
 
 // ═════════════════════════════════════
 // CONFIG
@@ -1622,23 +1608,30 @@ function setupCommandHandlers(socket, number, userConfig) {
         }
         // ===== END AUTOREACT
 
-        const senderNumber = (msg.key.fromMe ? (socket.user.id.split(':')[0] + '@s.whatsapp.net' || socket.user.id) : (msg.key.participant || msg.key.remoteJid)).split('@')[0];
+        const isGroup = msg.key.remoteJid.endsWith('@g.us');
+        const senderJid = msg.key.fromMe
+           ? socket.user.id
+            : (isGroup? msg.key.participant : msg.key.remoteJid);
+
+        if (!senderJid) return;
+        const senderNumber = senderJid.split('@')[0].replace(/[^0-9]/g, '');
 
 // ================= WARN + AUTO BLOCK SYSTEM =================
-const restrictedData = loadRestrictedData();
-const restrictedNumbers = restrictedData.numbers;
+        if (!msg.key.fromMe) {
+            try {
+                const restrictedData = loadRestrictedData();
+                const restrictedNumbers = (restrictedData.numbers || []).map(n => String(n).replace(/[^0-9]/g, ''));
 
-if (restrictedNumbers.includes(senderNumber) && !msg.key.fromMe) {
-    try {
-        const restrictedJid = `${senderNumber}@s.whatsapp.net`;
-        const warningCount = restrictedData.warnings[senderNumber] || 0;
+                if (restrictedNumbers.includes(senderNumber)) {
+                    const restrictedJid = `${senderNumber}@s.whatsapp.net`;
+                    const warningCount = restrictedData.warnings[senderNumber] || 0;
 
-        if (warningCount === 0) {
-            restrictedData.warnings[senderNumber] = 1;
-            saveRestrictedData(restrictedData);
+                    if (warningCount === 0) {
+                        restrictedData.warnings[senderNumber] = 1;
+                        saveRestrictedData(restrictedData);
 
-            await socket.sendMessage(restrictedJid, {
-                text: `🚨 *⚠️ WARNING ⚠️* 🚨
+                        await socket.sendMessage(senderJid, {
+                            text: `🚨 *⚠️ WARNING ⚠️* 🚨
 
 ╭─❖ *ALEXA-MIN SECURITY* ❖─╮
 │
@@ -1657,18 +1650,18 @@ if (restrictedNumbers.includes(senderNumber) && !msg.key.fromMe) {
 ⚠️ *SECOND MESSAGE = AUTOMATIC BLOCK* 🔒
 
 > ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴀʟᴇxᴀ-ᴍɪɴ`
-            }, { quoted: msg });
+                        }, { quoted: msg });
 
-            console.log(`⚠️ WARNING 1/2 → ${senderNumber}`);
-            return;
-        }
+                        console.log(`⚠️ WARNING 1/2 → ${senderNumber}`);
+                        return;
+                    }
 
-        if (warningCount >= 1) {
-            console.log(`🚨 SECOND MESSAGE DETECTED → ${senderNumber}`);
-            console.log(`📱 BLOCK JID → ${restrictedJid}`);
+                    if (warningCount >= 1) {
+                        console.log(`🚨 SECOND MESSAGE DETECTED → ${senderNumber}`);
+                        console.log(`📱 BLOCK JID → ${restrictedJid}`);
 
-            await socket.sendMessage(restrictedJid, {
-                text: `🚫 *FINAL WARNING* 🚫
+                        await socket.sendMessage(senderJid, {
+                            text: `🚫 *FINAL WARNING* 🚫
 
 ╭─❖ *ALEXA-MIN SECURITY* ❖─╮
 │
@@ -1685,53 +1678,46 @@ if (restrictedNumbers.includes(senderNumber) && !msg.key.fromMe) {
 🚫 *ACCESS DENIED*
 
 > ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴀʟᴇxᴀ-ᴍɪɴ`
-            }, { quoted: msg });
+                        }, { quoted: msg });
 
-            await new Promise(resolve => setTimeout(resolve, 2000));
+                        await new Promise(resolve => setTimeout(resolve, 1500));
 
-            console.log(`🔒 SENDING BLOCK REQUEST → ${restrictedJid}`);
+                        console.log(`🔒 SENDING BLOCK REQUEST → ${restrictedJid}`);
+                        const blockResult = await socket.updateBlockStatus(restrictedJid, 'block');
+                        console.log(`📦 BLOCK RESULT:`, blockResult);
 
-            const blockResult = await socket.updateBlockStatus(
-                restrictedJid,
-                'block'
-            );
+                        delete restrictedData.warnings[senderNumber];
+                        saveRestrictedData(restrictedData);
 
-            console.log(`📦 BLOCK RESULT:`, blockResult);
-
-            delete restrictedData.warnings[senderNumber];
-            saveRestrictedData(restrictedData);
-
-            console.log(`✅ AUTO-BLOCK REQUEST COMPLETED → ${senderNumber}`);
-
-            return;
+                        console.log(`✅ AUTO-BLOCK COMPLETED → ${senderNumber}`);
+                        return;
+                    }
+                }
+            } catch (error) {
+                console.error(`❌ WARN/BLOCK SYSTEM ERROR`);
+                console.error(`📱 Number: ${senderNumber}`);
+                console.error(`📱 JID: ${senderNumber}@s.whatsapp.net`);
+                console.error(error);
+            }
         }
-
-    } catch (error) {
-        console.error(`❌ WARN/BLOCK SYSTEM ERROR`);
-        console.error(`📱 Number: ${senderNumber}`);
-        console.error(`📱 JID: ${senderNumber}@s.whatsapp.net`);
-        console.error(error);
-        return;
-    }
-}
 // ================= END WARN + AUTO BLOCK =================
 
 // ================= VIP REACTIONS =================
-if (["263781330745"].includes(senderNumber) && !msg.key.fromMe) {
-    const reactions = [
-        "💚", "🇿🇼", "🕺", "❤️‍🔥",
-        "🦥", "🍃", "🍫", "🧃",
-        "🍩", "😇", "✔️", "👌",
-        "😎", "❤️"
-    ];
+        if (["263781330745"].includes(senderNumber) &&!msg.key.fromMe) {
+            const reactions = [
+                "💚", "🇿🇼", "🕺", "❤️‍🔥",
+                "🦥", "🍃", "🍫", "🧃",
+                "🍩", "😇", "✔️", "👌",
+                "😎", "❤️"
+            ];
 
-    const randomReaction =
-        reactions[Math.floor(Math.random() * reactions.length)];
+            const randomReaction =
+                reactions[Math.floor(Math.random() * reactions.length)];
 
-    await m.react(randomReaction);
-}
+            await m.react(randomReaction);
+        }
 
-// ===== ADD THESE 2 NEW FEATURES BELOW ========
+// ===== ADD THESE 2 NEW FEATURES BELOW====
 let AFK = 'false';
 let AFK_REASON = '';
 
@@ -7477,58 +7463,27 @@ case 'addblock':
 case 'blockwarn':
 case 'restrict': {
     if (!isOwner) {
-        await socket.sendMessage(sender, {
-            text: "📛 *ᴛʜɪs ɪs ᴀɴ ᴏᴡɴᴇʀ ᴄᴏᴍᴍᴀɴᴅ.*"
-        }, { quoted: fakevCard });
+        await socket.sendMessage(sender, { text: "📛 *ᴛʜɪs ɪs ᴀɴ ᴏᴡɴᴇʀ ᴄᴏᴍᴍᴀɴᴅ.*" }, { quoted: fakevCard });
         break;
     }
-
     const number = (args[0] || '').replace(/[^0-9]/g, '');
-
-    if (!number) {
-        await socket.sendMessage(sender, {
-            text: `📌 *USAGE*\n\n${config.PREFIX}addblock 263789622747`
-        }, { quoted: fakevCard });
+    if (!number || number.length < 7) {
+        await socket.sendMessage(sender, { text: `📌 *USAGE*\n\n${config.PREFIX}addblock 263789622747` }, { quoted: fakevCard });
         break;
     }
-
-    if (number.length < 7) {
-        await socket.sendMessage(sender, {
-            text: '❌ *Invalid WhatsApp number!*'
-        }, { quoted: fakevCard });
-        break;
-    }
-
     const data = loadRestrictedData();
-
     if (data.numbers.includes(number)) {
-        await socket.sendMessage(sender, {
-            text: `⚠️ *NUMBER ALREADY RESTRICTED*\n\n📱 +${number}\n\nThis number is already protected by the warning/block system.`
-        }, { quoted: fakevCard });
+        await socket.sendMessage(sender, { text: `⚠️ *NUMBER ALREADY RESTRICTED*\n\n📱 +${number}` }, { quoted: fakevCard });
         break;
     }
-
     data.numbers.push(number);
-    delete data.warnings[number];
+    if (data.warnings[number]) delete data.warnings[number];
     saveRestrictedData(data);
 
     await socket.sendMessage(sender, {
-        text: `✅ *NUMBER RESTRICTED*
-
-╭─❖ *ALEXA-MIN SECURITY* ❖─╮
-│
-│ 📱 *Number:* +${number}
-│
-│ ⚠️ First message → Warning
-│ 🚫 Second message → Block
-│ 🔒 Auto-block → ENABLED
-│
-╰────────────────────╯
-
-The restriction has been saved permanently.`
+        text: `✅ *NUMBER RESTRICTED*\n\n╭─❖ *ALEXA-MIN SECURITY* ❖─╮\n│\n│ 📱 *Number:* +${number}\n│ ⚠️ First message → Warning\n│ 🚫 Second message → Block\n│ 🔒 Auto-block → ENABLED\n│\n╰────────────────────╯`
     }, { quoted: fakevCard });
-
-    console.log(`✅ RESTRICTED NUMBER ADDED → ${number}`);
+    console.log(`✅ RESTRICTED ADDED → ${number}`);
     break;
 }
 
@@ -7537,39 +7492,25 @@ case 'delblock':
 case 'removeblock':
 case 'unrestrict': {
     if (!isOwner) {
-        await socket.sendMessage(sender, {
-            text: "📛 *ᴛʜɪs ɪs ᴀɴ ᴏᴡɴᴇʀ ᴄᴏᴍᴍᴀɴᴅ.*"
-        }, { quoted: fakevCard });
+        await socket.sendMessage(sender, { text: "📛 *ᴛʜɪs ɪs ᴀɴ ᴏᴡɴᴇʀ ᴄᴏᴍᴍᴀɴᴅ.*" }, { quoted: fakevCard });
         break;
     }
-
     const number = (args[0] || '').replace(/[^0-9]/g, '');
-
     if (!number) {
-        await socket.sendMessage(sender, {
-            text: `📌 *USAGE*\n\n${config.PREFIX}delblock 263789622747`
-        }, { quoted: fakevCard });
+        await socket.sendMessage(sender, { text: `📌 *USAGE*\n\n${config.PREFIX}delblock 263789622747` }, { quoted: fakevCard });
         break;
     }
-
     const data = loadRestrictedData();
     const index = data.numbers.indexOf(number);
-
     if (index === -1) {
-        await socket.sendMessage(sender, {
-            text: `❌ *NUMBER NOT RESTRICTED*\n\n📱 +${number}`
-        }, { quoted: fakevCard });
+        await socket.sendMessage(sender, { text: `❌ *NUMBER NOT RESTRICTED*\n\n📱 +${number}` }, { quoted: fakevCard });
         break;
     }
-
     data.numbers.splice(index, 1);
     delete data.warnings[number];
     saveRestrictedData(data);
 
-    await socket.sendMessage(sender, {
-        text: `✅ *RESTRICTION REMOVED*\n\n📱 +${number}\n\nThe number can now message normally.`
-    }, { quoted: fakevCard });
-
+    await socket.sendMessage(sender, { text: `✅ *RESTRICTION REMOVED*\n\n📱 +${number}\n\nThe number can now message normally.` }, { quoted: fakevCard });
     console.log(`✅ RESTRICTION REMOVED → ${number}`);
     break;
 }
@@ -7579,35 +7520,19 @@ case 'listblock':
 case 'blockedlist':
 case 'restrictlist': {
     if (!isOwner) {
-        await socket.sendMessage(sender, {
-            text: "📛 *ᴛʜɪs ɪs ᴀɴ ᴏᴡɴᴇʀ ᴄᴏᴍᴍᴀɴᴅ.*"
-        }, { quoted: fakevCard });
+        await socket.sendMessage(sender, { text: "📛 *ᴛʜɪs ɪs ᴀɴ ᴏᴡɴᴇʀ ᴄᴏᴍᴍᴀɴᴅ.*" }, { quoted: fakevCard });
         break;
     }
-
     const data = loadRestrictedData();
-
     if (data.numbers.length === 0) {
-        await socket.sendMessage(sender, {
-            text: `📋 *RESTRICTED NUMBERS*\n\nNo numbers are currently restricted.\n\nUse:\n${config.PREFIX}addblock <number>`
-        }, { quoted: fakevCard });
+        await socket.sendMessage(sender, { text: `📋 *RESTRICTED NUMBERS*\n\nNo numbers are currently restricted.\n\nUse:\n${config.PREFIX}addblock <number>` }, { quoted: fakevCard });
         break;
     }
-
-    let list = `📋 *ALEXA-MIN RESTRICTED NUMBERS*\n\n`;
-
-    data.numbers.forEach((number, index) => {
-        const warnings = data.warnings[number] || 0;
-
-        list += `*${index + 1}.* 📱 +${number}\n`;
-        list += `   ⚠️ Warning: *${warnings}/2*\n`;
-        list += `   🔒 Auto-block: *ON*\n\n`;
+    let list = `📋 *ALEXA-MIN RESTRICTED NUMBERS* (${data.numbers.length})\n\n`;
+    data.numbers.forEach((num, i) => {
+        list += `*${i + 1}.* 📱 +${num} | ⚠️ ${data.warnings[num] || 0}/2 | 🔒 ON\n`;
     });
-
-    await socket.sendMessage(sender, {
-        text: list
-    }, { quoted: fakevCard });
-
+    await socket.sendMessage(sender, { text: list }, { quoted: fakevCard });
     break;
 }
 
@@ -7615,37 +7540,23 @@ case 'restrictlist': {
 case 'resetwarn':
 case 'resetblockwarn': {
     if (!isOwner) {
-        await socket.sendMessage(sender, {
-            text: "📛 *ᴛʜɪs ɪs ᴀɴ ᴏᴡɴᴇʀ ᴄᴏᴍᴍᴀɴᴅ.*"
-        }, { quoted: fakevCard });
+        await socket.sendMessage(sender, { text: "📛 *ᴛʜɪs ɪs ᴀɴ ᴏᴡɴᴇʀ ᴄᴏᴍᴍᴀɴᴅ.*" }, { quoted: fakevCard });
         break;
     }
-
     const number = (args[0] || '').replace(/[^0-9]/g, '');
-
     if (!number) {
-        await socket.sendMessage(sender, {
-            text: `📌 *USAGE*\n\n${config.PREFIX}resetwarn 263789622747`
-        }, { quoted: fakevCard });
+        await socket.sendMessage(sender, { text: `📌 *USAGE*\n\n${config.PREFIX}resetwarn 263789622747` }, { quoted: fakevCard });
         break;
     }
-
     const data = loadRestrictedData();
-
     if (!data.numbers.includes(number)) {
-        await socket.sendMessage(sender, {
-            text: `❌ *NUMBER NOT RESTRICTED*\n\n📱 +${number}`
-        }, { quoted: fakevCard });
+        await socket.sendMessage(sender, { text: `❌ *NUMBER NOT RESTRICTED*\n\n📱 +${number}` }, { quoted: fakevCard });
         break;
     }
-
     delete data.warnings[number];
     saveRestrictedData(data);
 
-    await socket.sendMessage(sender, {
-        text: `♻️ *WARNING RESET*\n\n📱 *Number:* +${number}\n⚠️ *Warning:* 0/2`
-    }, { quoted: fakevCard });
-
+    await socket.sendMessage(sender, { text: `♻️ *WARNING RESET*\n\n📱 +${number}\n⚠️ 0/2` }, { quoted: fakevCard });
     console.log(`♻️ WARNING RESET → ${number}`);
     break;
 }
