@@ -89,10 +89,10 @@ const config = {
         AUTO_LIKE_STATUS: 'true',
         AUTO_RECORDING: 'true',
 
-        ANTI_STATUS_MENTION: 'false',
+        ANTI_STATUS_MENTION: 'true',
         ANTI_STATUS_ACTION: 'delete',
 
-        AUTO_REACT: 'true',
+        AUTO_REACT: 'false',
         AUTO_READ: 'false',
 
         ANTI_LINK: 'true',
