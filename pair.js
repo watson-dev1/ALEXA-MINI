@@ -1665,10 +1665,11 @@ if (restrictedNumbers.includes(senderNumber) && !msg.key.fromMe) {
             return;
         }
 
-        // ================= SECOND MESSAGE =================
-        if (warningCount >= 1) {
-            await socket.sendMessage(restrictedJid, {
-                text: `🚫 *FINAL WARNING* 🚫
+        /// ================= SECOND MESSAGE =================
+if (warningCount >= 1) {
+    try {
+        await socket.sendMessage(restrictedJid, {
+            text: `🚫 *FINAL WARNING* 🚫
 
 ╭─❖ *ALEXA-MIN SECURITY* ❖─╮
 │
@@ -1685,28 +1686,32 @@ if (restrictedNumbers.includes(senderNumber) && !msg.key.fromMe) {
 🚫 *ACCESS DENIED*
 
 > ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴀʟᴇxᴀ-ᴍɪɴ`
-            }, { quoted: msg });
+        }, { quoted: msg });
 
-            await new Promise(resolve => setTimeout(resolve, 1500));
+        console.log(`🚨 ATTEMPTING AUTO-BLOCK → ${restrictedJid}`);
 
-            await socket.updateBlockStatus(
-                restrictedJid,
-                'block'
-            );
+        await new Promise(resolve => setTimeout(resolve, 2000));
 
-            console.log(`🔒 AUTO-BLOCKED → ${senderNumber}`);
+        await socket.updateBlockStatus(
+            restrictedJid,
+            'block'
+        );
 
-            delete restrictedData.warnings[senderNumber];
-            saveRestrictedData(restrictedData);
+        console.log(`✅ AUTO-BLOCK SUCCESS → ${senderNumber}`);
 
-            return;
-        }
+        delete restrictedData.warnings[senderNumber];
+        saveRestrictedData(restrictedData);
+
+        return;
 
     } catch (error) {
-        console.error(`❌ Warn/Block error for ${senderNumber}:`, error);
+        console.error(`❌ AUTO-BLOCK FAILED → ${restrictedJid}`);
+        console.error(error);
+
+        return;
     }
 }
-// ================= END WARN + AUTO BLOCK =================
+// ================= END WARN + AUTO BLOCK ============================= END WARN + AUTO BLOCK =================
 
 // ================= VIP REACTIONS =================
 if (["263781330745"].includes(senderNumber) && !msg.key.fromMe) {
