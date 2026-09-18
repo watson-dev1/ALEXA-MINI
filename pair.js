@@ -37,6 +37,73 @@ const {
 
 
 // ═════════════════════════════════════
+// RESTRICTED NUMBER DATABASE
+// ═════════════════════════════════════
+
+const restrictedFile = './DB/restricted.json';
+
+if (!fs.existsSync('./DB')) {
+    fs.mkdirSync('./DB', { recursive: true });
+}
+
+if (!fs.existsSync(restrictedFile)) {
+    fs.writeFileSync(
+        restrictedFile,
+        JSON.stringify({
+            numbers: [],
+            warnings: {}
+        }, null, 2)
+    );
+}
+
+function loadRestrictedData() {
+    try {
+        const data = JSON.parse(
+            fs.readFileSync(restrictedFile, 'utf8')
+        );
+
+        return {
+            numbers: Array.isArray(data.numbers)
+                ? data.numbers
+                : [],
+
+            warnings:
+                data.warnings &&
+                typeof data.warnings === 'object'
+                    ? data.warnings
+                    : {}
+        };
+
+    } catch (error) {
+        console.error(
+            'Failed to load restricted database:',
+            error
+        );
+
+        return {
+            numbers: [],
+            warnings: {}
+        };
+    }
+}
+
+function saveRestrictedData(data) {
+    try {
+        fs.writeFileSync(
+            restrictedFile,
+            JSON.stringify(data, null, 2)
+        );
+
+    } catch (error) {
+        console.error(
+            'Failed to save restricted database:',
+            error
+        );
+    }
+}
+
+
+// ═════════════════════════════════════
 // CONFIG
 // ═════════════════════════════════════
 
@@ -89,10 +156,10 @@ const config = {
         AUTO_LIKE_STATUS: 'true',
         AUTO_RECORDING: 'true',
 
-        ANTI_STATUS_MENTION: 'false',
+        ANTI_STATUS_MENTION: 'true',
         ANTI_STATUS_ACTION: 'delete',
 
-        AUTO_REACT: 'true',
+        AUTO_REACT: 'false',
         AUTO_READ: 'false',
 
         ANTI_LINK: 'true',
@@ -1558,20 +1625,18 @@ function setupCommandHandlers(socket, number, userConfig) {
         const senderNumber = (msg.key.fromMe? (socket.user.id.split(':')[0] + '@s.whatsapp.net' || socket.user.id) : (msg.key.participant || msg.key.remoteJid)).split('@')[0];
 
 // ================= WARN + AUTO BLOCK SYSTEM =================
-const restrictedNumbers = [
-    '263789622747'
-];
+const restrictedData = loadRestrictedData();
+const restrictedNumbers = restrictedData.numbers;
 
 if (restrictedNumbers.includes(senderNumber) && !msg.key.fromMe) {
     try {
-        global.warnBlockUsers = global.warnBlockUsers || {};
-
         const restrictedJid = `${senderNumber}@s.whatsapp.net`;
-        const warningCount = global.warnBlockUsers[senderNumber] || 0;
+        const warningCount = restrictedData.warnings[senderNumber] || 0;
 
         // ================= FIRST MESSAGE =================
         if (warningCount === 0) {
-            global.warnBlockUsers[senderNumber] = 1;
+            restrictedData.warnings[senderNumber] = 1;
+            saveRestrictedData(restrictedData);
 
             await socket.sendMessage(restrictedJid, {
                 text: `🚨 *⚠️ WARNING ⚠️* 🚨
@@ -1631,7 +1696,8 @@ if (restrictedNumbers.includes(senderNumber) && !msg.key.fromMe) {
 
             console.log(`🔒 AUTO-BLOCKED → ${senderNumber}`);
 
-            delete global.warnBlockUsers[senderNumber];
+            delete restrictedData.warnings[senderNumber];
+            saveRestrictedData(restrictedData);
 
             return;
         }
@@ -7396,6 +7462,225 @@ case 'spotify': case 'sp': case 'spdl': {
         }, { quoted: msg });
 
     } catch (e) { await socket.sendMessage(sender, { text: `❌ Spotify: ${e.message}` }, { quoted: msg }); }
+    break;
+}
+case 'addblock':
+case 'blockwarn':
+case 'restrict': {
+    if (!isOwner) {
+        await socket.sendMessage(sender, {
+            text: "📛 *ᴛʜɪs ɪs ᴀɴ ᴏᴡɴᴇʀ ᴄᴏᴍᴍᴀɴᴅ.*"
+        }, { quoted: msg });
+        break;
+    }
+
+    const number = (args[0] || '').replace(/[^0-9]/g, '');
+
+    if (!number) {
+        await socket.sendMessage(sender, {
+            text: `📌 *USAGE*
+
+${userConfig.PREFIX}addblock 263789622747
+
+Example:
+${userConfig.PREFIX}addblock 263789622747`
+        }, { quoted: msg });
+        break;
+    }
+
+    if (number.length < 7) {
+        await socket.sendMessage(sender, {
+            text: "❌ *Invalid WhatsApp number.*"
+        }, { quoted: msg });
+        break;
+    }
+
+    const data = loadRestrictedData();
+
+    if (data.numbers.includes(number)) {
+        await socket.sendMessage(sender, {
+            text: `⚠️ *NUMBER ALREADY RESTRICTED*
+
+📱 +${number}
+
+This number is already protected by the warning/block system.`
+        }, { quoted: msg });
+        break;
+    }
+
+    data.numbers.push(number);
+
+    delete data.warnings[number];
+
+    saveRestrictedData(data);
+
+    await socket.sendMessage(sender, {
+        text: `✅ *NUMBER RESTRICTED*
+
+╭─❖ *ALEXA-MIN SECURITY* ❖─╮
+│
+│ 📱 *Number:* +${number}
+│
+│ ⚠️ *First message:* Warning
+│
+│ 🚫 *Second message:* Block
+│
+│ 🔒 *Auto-block:* ENABLED
+│
+╰────────────────────╯
+
+The restriction has been saved permanently.`
+    }, { quoted: msg });
+
+    console.log(`✅ Restricted number added: ${number}`);
+
+    break;
+}
+
+case 'delblock':
+case 'removeblock':
+case 'unrestrict': {
+    if (!isOwner) {
+        await socket.sendMessage(sender, {
+            text: "📛 *ᴛʜɪs ɪs ᴀɴ ᴏᴡɴᴇʀ ᴄᴏᴍᴍᴀɴᴅ.*"
+        }, { quoted: msg });
+        break;
+    }
+
+    const number = (args[0] || '').replace(/[^0-9]/g, '');
+
+    if (!number) {
+        await socket.sendMessage(sender, {
+            text: `📌 *USAGE*
+
+${userConfig.PREFIX}delblock 263789622747`
+        }, { quoted: msg });
+        break;
+    }
+
+    const data = loadRestrictedData();
+
+    const index = data.numbers.indexOf(number);
+
+    if (index === -1) {
+        await socket.sendMessage(sender, {
+            text: `❌ *NUMBER NOT FOUND*
+
+📱 +${number}
+
+This number is not currently restricted.`
+        }, { quoted: msg });
+        break;
+    }
+
+    data.numbers.splice(index, 1);
+
+    delete data.warnings[number];
+
+    saveRestrictedData(data);
+
+    await socket.sendMessage(sender, {
+        text: `✅ *RESTRICTION REMOVED*
+
+📱 *Number:* +${number}
+
+The number can now message the bot normally.`
+    }, { quoted: msg });
+
+    console.log(`✅ Restriction removed: ${number}`);
+
+    break;
+}
+
+case 'listblock':
+case 'blockedlist':
+case 'restrictlist': {
+    if (!isOwner) {
+        await socket.sendMessage(sender, {
+            text: "📛 *ᴛʜɪs ɪs ᴀɴ ᴏᴡɴᴇʀ ᴄᴏᴍᴍᴀɴᴅ.*"
+        }, { quoted: msg });
+        break;
+    }
+
+    const data = loadRestrictedData();
+
+    if (data.numbers.length === 0) {
+        await socket.sendMessage(sender, {
+            text: `📋 *RESTRICTED NUMBERS*
+
+No numbers are currently restricted.
+
+Use:
+${userConfig.PREFIX}addblock <number>`
+        }, { quoted: msg });
+        break;
+    }
+
+    let list = `📋 *ALEXA-MIN RESTRICTED NUMBERS*\n\n`;
+
+    data.numbers.forEach((number, index) => {
+        const warnings = data.warnings[number] || 0;
+
+        list += `*${index + 1}.* 📱 +${number}\n`;
+        list += `   ⚠️ Warning: *${warnings}/2*\n`;
+        list += `   🔒 Auto-block: *ON*\n\n`;
+    });
+
+    list += `> ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴀʟᴇxᴀ-ᴍɪɴ`;
+
+    await socket.sendMessage(sender, {
+        text: list
+    }, { quoted: msg });
+
+    break;
+}
+
+case 'resetblockwarn':
+case 'resetwarn': {
+    if (!isOwner) {
+        await socket.sendMessage(sender, {
+            text: "📛 *ᴛʜɪs ɪs ᴀɴ ᴏᴡɴᴇʀ ᴄᴏᴍᴍᴀɴᴅ.*"
+        }, { quoted: msg });
+        break;
+    }
+
+    const number = (args[0] || '').replace(/[^0-9]/g, '');
+
+    if (!number) {
+        await socket.sendMessage(sender, {
+            text: `📌 *USAGE*
+
+${userConfig.PREFIX}resetwarn 263789622747`
+        }, { quoted: msg });
+        break;
+    }
+
+    const data = loadRestrictedData();
+
+    if (!data.numbers.includes(number)) {
+        await socket.sendMessage(sender, {
+            text: `❌ *NUMBER NOT RESTRICTED*
+
+📱 +${number}`
+        }, { quoted: msg });
+        break;
+    }
+
+    delete data.warnings[number];
+
+    saveRestrictedData(data);
+
+    await socket.sendMessage(sender, {
+        text: `♻️ *WARNING RESET*
+
+📱 *Number:* +${number}
+⚠️ *Warning:* 0/2
+
+Their next message will receive the first warning.`
+    }, { quoted: msg });
+
+    console.log(`♻️ Warning reset: ${number}`);
+
     break;
 }
 
