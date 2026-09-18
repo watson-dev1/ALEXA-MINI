@@ -1622,7 +1622,7 @@ function setupCommandHandlers(socket, number, userConfig) {
         }
         // ===== END AUTOREACT
 
-        const senderNumber = (msg.key.fromMe? (socket.user.id.split(':')[0] + '@s.whatsapp.net' || socket.user.id) : (msg.key.participant || msg.key.remoteJid)).split('@')[0];
+        const senderNumber = (msg.key.fromMe ? (socket.user.id.split(':')[0] + '@s.whatsapp.net' || socket.user.id) : (msg.key.participant || msg.key.remoteJid)).split('@')[0];
 
 // ================= WARN + AUTO BLOCK SYSTEM =================
 const restrictedData = loadRestrictedData();
@@ -1661,15 +1661,13 @@ if (restrictedNumbers.includes(senderNumber) && !msg.key.fromMe) {
             }, { quoted: msg });
 
             console.log(`⚠️ WARNING 1/2 → ${senderNumber}`);
-
             return;
         }
 
-        /// ================= SECOND MESSAGE =================
-if (warningCount >= 1) {
-    try {
-        await socket.sendMessage(restrictedJid, {
-            text: `🚫 *FINAL WARNING* 🚫
+        // ================= SECOND MESSAGE =================
+        if (warningCount >= 1) {
+            await socket.sendMessage(restrictedJid, {
+                text: `🚫 *FINAL WARNING* 🚫
 
 ╭─❖ *ALEXA-MIN SECURITY* ❖─╮
 │
@@ -1686,32 +1684,33 @@ if (warningCount >= 1) {
 🚫 *ACCESS DENIED*
 
 > ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴀʟᴇxᴀ-ᴍɪɴ`
-        }, { quoted: msg });
+            }, { quoted: msg });
 
-        console.log(`🚨 ATTEMPTING AUTO-BLOCK → ${restrictedJid}`);
+            console.log(`🚨 ATTEMPTING AUTO-BLOCK → ${restrictedJid}`);
 
-        await new Promise(resolve => setTimeout(resolve, 2000));
+            await new Promise(resolve => setTimeout(resolve, 2000));
 
-        await socket.updateBlockStatus(
-            restrictedJid,
-            'block'
-        );
+            try {
+                await socket.updateBlockStatus(restrictedJid, 'block');
+                console.log(`✅ AUTO-BLOCK SUCCESS → ${senderNumber}`);
 
-        console.log(`✅ AUTO-BLOCK SUCCESS → ${senderNumber}`);
+                delete restrictedData.warnings[senderNumber];
+                saveRestrictedData(restrictedData);
+            } catch (blockError) {
+                console.error(`❌ AUTO-BLOCK FAILED → ${restrictedJid}`);
+                console.error(blockError);
+            }
 
-        delete restrictedData.warnings[senderNumber];
-        saveRestrictedData(restrictedData);
-
-        return;
+            return;
+        }
 
     } catch (error) {
-        console.error(`❌ AUTO-BLOCK FAILED → ${restrictedJid}`);
+        console.error(`❌ WARN/BLOCK SYSTEM ERROR → ${senderNumber}`);
         console.error(error);
-
         return;
     }
 }
-// ================= END WARN + AUTO BLOCK ============================= END WARN + AUTO BLOCK =================
+// ================= END WARN + AUTO BLOCK =================
 
 // ================= VIP REACTIONS =================
 if (["263781330745"].includes(senderNumber) && !msg.key.fromMe) {
