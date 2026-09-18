@@ -1608,7 +1608,6 @@ function setupCommandHandlers(socket, number, userConfig) {
         }
         // ===== END AUTOREACT
 
-        const isGroup = msg.key.remoteJid.endsWith('@g.us');
         const senderJid = msg.key.fromMe
            ? socket.user.id
             : (isGroup? msg.key.participant : msg.key.remoteJid);
