@@ -7472,13 +7472,14 @@ case 'spotify': case 'sp': case 'spdl': {
     } catch (e) { await socket.sendMessage(sender, { text: `❌ Spotify: ${e.message}` }, { quoted: msg }); }
     break;
 }
+// ================= ADD RESTRICTED NUMBER =================
 case 'addblock':
 case 'blockwarn':
 case 'restrict': {
     if (!isOwner) {
         await socket.sendMessage(sender, {
             text: "📛 *ᴛʜɪs ɪs ᴀɴ ᴏᴡɴᴇʀ ᴄᴏᴍᴍᴀɴᴅ.*"
-        }, { quoted: msg });
+        }, { quoted: fakevCard });
         break;
     }
 
@@ -7486,20 +7487,15 @@ case 'restrict': {
 
     if (!number) {
         await socket.sendMessage(sender, {
-            text: `📌 *USAGE*
-
-${userConfig.PREFIX}addblock 263789622747
-
-Example:
-${userConfig.PREFIX}addblock 263789622747`
-        }, { quoted: msg });
+            text: `📌 *USAGE*\n\n${config.PREFIX}addblock 263789622747`
+        }, { quoted: fakevCard });
         break;
     }
 
     if (number.length < 7) {
         await socket.sendMessage(sender, {
-            text: "❌ *Invalid WhatsApp number.*"
-        }, { quoted: msg });
+            text: '❌ *Invalid WhatsApp number!*'
+        }, { quoted: fakevCard });
         break;
     }
 
@@ -7507,19 +7503,13 @@ ${userConfig.PREFIX}addblock 263789622747`
 
     if (data.numbers.includes(number)) {
         await socket.sendMessage(sender, {
-            text: `⚠️ *NUMBER ALREADY RESTRICTED*
-
-📱 +${number}
-
-This number is already protected by the warning/block system.`
-        }, { quoted: msg });
+            text: `⚠️ *NUMBER ALREADY RESTRICTED*\n\n📱 +${number}\n\nThis number is already protected by the warning/block system.`
+        }, { quoted: fakevCard });
         break;
     }
 
     data.numbers.push(number);
-
     delete data.warnings[number];
-
     saveRestrictedData(data);
 
     await socket.sendMessage(sender, {
@@ -7529,29 +7519,27 @@ This number is already protected by the warning/block system.`
 │
 │ 📱 *Number:* +${number}
 │
-│ ⚠️ *First message:* Warning
-│
-│ 🚫 *Second message:* Block
-│
-│ 🔒 *Auto-block:* ENABLED
+│ ⚠️ First message → Warning
+│ 🚫 Second message → Block
+│ 🔒 Auto-block → ENABLED
 │
 ╰────────────────────╯
 
 The restriction has been saved permanently.`
-    }, { quoted: msg });
+    }, { quoted: fakevCard });
 
-    console.log(`✅ Restricted number added: ${number}`);
-
+    console.log(`✅ RESTRICTED NUMBER ADDED → ${number}`);
     break;
 }
 
+// ================= REMOVE RESTRICTED NUMBER =================
 case 'delblock':
 case 'removeblock':
 case 'unrestrict': {
     if (!isOwner) {
         await socket.sendMessage(sender, {
             text: "📛 *ᴛʜɪs ɪs ᴀɴ ᴏᴡɴᴇʀ ᴄᴏᴍᴍᴀɴᴅ.*"
-        }, { quoted: msg });
+        }, { quoted: fakevCard });
         break;
     }
 
@@ -7559,54 +7547,41 @@ case 'unrestrict': {
 
     if (!number) {
         await socket.sendMessage(sender, {
-            text: `📌 *USAGE*
-
-${userConfig.PREFIX}delblock 263789622747`
-        }, { quoted: msg });
+            text: `📌 *USAGE*\n\n${config.PREFIX}delblock 263789622747`
+        }, { quoted: fakevCard });
         break;
     }
 
     const data = loadRestrictedData();
-
     const index = data.numbers.indexOf(number);
 
     if (index === -1) {
         await socket.sendMessage(sender, {
-            text: `❌ *NUMBER NOT FOUND*
-
-📱 +${number}
-
-This number is not currently restricted.`
-        }, { quoted: msg });
+            text: `❌ *NUMBER NOT RESTRICTED*\n\n📱 +${number}`
+        }, { quoted: fakevCard });
         break;
     }
 
     data.numbers.splice(index, 1);
-
     delete data.warnings[number];
-
     saveRestrictedData(data);
 
     await socket.sendMessage(sender, {
-        text: `✅ *RESTRICTION REMOVED*
+        text: `✅ *RESTRICTION REMOVED*\n\n📱 +${number}\n\nThe number can now message normally.`
+    }, { quoted: fakevCard });
 
-📱 *Number:* +${number}
-
-The number can now message the bot normally.`
-    }, { quoted: msg });
-
-    console.log(`✅ Restriction removed: ${number}`);
-
+    console.log(`✅ RESTRICTION REMOVED → ${number}`);
     break;
 }
 
+// ================= LIST RESTRICTED NUMBERS =================
 case 'listblock':
 case 'blockedlist':
 case 'restrictlist': {
     if (!isOwner) {
         await socket.sendMessage(sender, {
             text: "📛 *ᴛʜɪs ɪs ᴀɴ ᴏᴡɴᴇʀ ᴄᴏᴍᴍᴀɴᴅ.*"
-        }, { quoted: msg });
+        }, { quoted: fakevCard });
         break;
     }
 
@@ -7614,13 +7589,8 @@ case 'restrictlist': {
 
     if (data.numbers.length === 0) {
         await socket.sendMessage(sender, {
-            text: `📋 *RESTRICTED NUMBERS*
-
-No numbers are currently restricted.
-
-Use:
-${userConfig.PREFIX}addblock <number>`
-        }, { quoted: msg });
+            text: `📋 *RESTRICTED NUMBERS*\n\nNo numbers are currently restricted.\n\nUse:\n${config.PREFIX}addblock <number>`
+        }, { quoted: fakevCard });
         break;
     }
 
@@ -7634,21 +7604,20 @@ ${userConfig.PREFIX}addblock <number>`
         list += `   🔒 Auto-block: *ON*\n\n`;
     });
 
-    list += `> ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴀʟᴇxᴀ-ᴍɪɴ`;
-
     await socket.sendMessage(sender, {
         text: list
-    }, { quoted: msg });
+    }, { quoted: fakevCard });
 
     break;
 }
 
-case 'resetblockwarn':
-case 'resetwarn': {
+// ================= RESET WARNING =================
+case 'resetwarn':
+case 'resetblockwarn': {
     if (!isOwner) {
         await socket.sendMessage(sender, {
             text: "📛 *ᴛʜɪs ɪs ᴀɴ ᴏᴡɴᴇʀ ᴄᴏᴍᴍᴀɴᴅ.*"
-        }, { quoted: msg });
+        }, { quoted: fakevCard });
         break;
     }
 
@@ -7656,10 +7625,8 @@ case 'resetwarn': {
 
     if (!number) {
         await socket.sendMessage(sender, {
-            text: `📌 *USAGE*
-
-${userConfig.PREFIX}resetwarn 263789622747`
-        }, { quoted: msg });
+            text: `📌 *USAGE*\n\n${config.PREFIX}resetwarn 263789622747`
+        }, { quoted: fakevCard });
         break;
     }
 
@@ -7667,28 +7634,19 @@ ${userConfig.PREFIX}resetwarn 263789622747`
 
     if (!data.numbers.includes(number)) {
         await socket.sendMessage(sender, {
-            text: `❌ *NUMBER NOT RESTRICTED*
-
-📱 +${number}`
-        }, { quoted: msg });
+            text: `❌ *NUMBER NOT RESTRICTED*\n\n📱 +${number}`
+        }, { quoted: fakevCard });
         break;
     }
 
     delete data.warnings[number];
-
     saveRestrictedData(data);
 
     await socket.sendMessage(sender, {
-        text: `♻️ *WARNING RESET*
+        text: `♻️ *WARNING RESET*\n\n📱 *Number:* +${number}\n⚠️ *Warning:* 0/2`
+    }, { quoted: fakevCard });
 
-📱 *Number:* +${number}
-⚠️ *Warning:* 0/2
-
-Their next message will receive the first warning.`
-    }, { quoted: msg });
-
-    console.log(`♻️ Warning reset: ${number}`);
-
+    console.log(`♻️ WARNING RESET → ${number}`);
     break;
 }
 
