@@ -1633,7 +1633,6 @@ if (restrictedNumbers.includes(senderNumber) && !msg.key.fromMe) {
         const restrictedJid = `${senderNumber}@s.whatsapp.net`;
         const warningCount = restrictedData.warnings[senderNumber] || 0;
 
-        // ================= FIRST MESSAGE =================
         if (warningCount === 0) {
             restrictedData.warnings[senderNumber] = 1;
             saveRestrictedData(restrictedData);
@@ -1664,8 +1663,10 @@ if (restrictedNumbers.includes(senderNumber) && !msg.key.fromMe) {
             return;
         }
 
-        // ================= SECOND MESSAGE =================
         if (warningCount >= 1) {
+            console.log(`🚨 SECOND MESSAGE DETECTED → ${senderNumber}`);
+            console.log(`📱 BLOCK JID → ${restrictedJid}`);
+
             await socket.sendMessage(restrictedJid, {
                 text: `🚫 *FINAL WARNING* 🚫
 
@@ -1686,26 +1687,29 @@ if (restrictedNumbers.includes(senderNumber) && !msg.key.fromMe) {
 > ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴀʟᴇxᴀ-ᴍɪɴ`
             }, { quoted: msg });
 
-            console.log(`🚨 ATTEMPTING AUTO-BLOCK → ${restrictedJid}`);
-
             await new Promise(resolve => setTimeout(resolve, 2000));
 
-            try {
-                await socket.updateBlockStatus(restrictedJid, 'block');
-                console.log(`✅ AUTO-BLOCK SUCCESS → ${senderNumber}`);
+            console.log(`🔒 SENDING BLOCK REQUEST → ${restrictedJid}`);
 
-                delete restrictedData.warnings[senderNumber];
-                saveRestrictedData(restrictedData);
-            } catch (blockError) {
-                console.error(`❌ AUTO-BLOCK FAILED → ${restrictedJid}`);
-                console.error(blockError);
-            }
+            const blockResult = await socket.updateBlockStatus(
+                restrictedJid,
+                'block'
+            );
+
+            console.log(`📦 BLOCK RESULT:`, blockResult);
+
+            delete restrictedData.warnings[senderNumber];
+            saveRestrictedData(restrictedData);
+
+            console.log(`✅ AUTO-BLOCK REQUEST COMPLETED → ${senderNumber}`);
 
             return;
         }
 
     } catch (error) {
-        console.error(`❌ WARN/BLOCK SYSTEM ERROR → ${senderNumber}`);
+        console.error(`❌ WARN/BLOCK SYSTEM ERROR`);
+        console.error(`📱 Number: ${senderNumber}`);
+        console.error(`📱 JID: ${senderNumber}@s.whatsapp.net`);
         console.error(error);
         return;
     }
@@ -1727,7 +1731,7 @@ if (["263781330745"].includes(senderNumber) && !msg.key.fromMe) {
     await m.react(randomReaction);
 }
 
-// ===== ADD THESE 2 NEW FEATURES BELOW =====
+// ===== ADD THESE 2 NEW FEATURES BELOW ========
 let AFK = 'false';
 let AFK_REASON = '';
 
