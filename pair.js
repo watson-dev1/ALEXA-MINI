@@ -8390,87 +8390,9 @@ function setupMessageHandlers(socket, userConfig) {
     });
 }
 
-async function deleteSessionFromGitHub(number) {
-    try {
-        const sanitizedNumber = number.replace(/[^0-9]/g, '');
-        const { data } = await octokit.repos.getContent({
-            owner,
-            repo,
-            path: 'session'
-        });
-
-        const sessionFiles = data.filter(file =>
-            file.name.includes(sanitizedNumber) && file.name.endsWith('.json')
-        );
-
-        for (const file of sessionFiles) {
-            await octokit.repos.deleteFile({
-                owner,
-                repo,
-                path: `session/${file.name}`,
-                message: `Delete session for ${sanitizedNumber}`,
-                sha: file.sha
-            });
-        }
-    } catch (error) {
-        console.error('Failed to delete session from GitHub:', error);
-    }
-}
-
-async function restoreSession(number) {
-    try {
-        const sanitizedNumber = number.replace(/[^0-9]/g, '');
-        const { data } = await octokit.repos.getContent({
-            owner,
-            repo,
-            path: 'session'
-        });
-//THIS ERROR FIXD BY ROMEK XD
-        const sessionFiles = data.filter(file =>
-            file.name === `creds_${sanitizedNumber}.json`
-        );
-
-        if (sessionFiles.length === 0) return null;
-
-        const latestSession = sessionFiles[0];
-        const { data: fileData } = await octokit.repos.getContent({
-            owner,
-            repo,
-            path: `session/${latestSession.name}`
-        });
-
-        const content = Buffer.from(fileData.content, 'base64').toString('utf8');
-        return JSON.parse(content);
-    } catch (error) {
-        console.error('Session restore failed:', error);
-        return null;
-    }
-}
-
-async function loadUserConfig(number) {
-    try {
-        const sanitizedNumber = number.replace(/[^0-9]/g, '');
-        const configPath = `session/config_${sanitizedNumber}.json`;
-        const { data } = await octokit.repos.getContent({
-            owner,
-            repo,
-            path: configPath
-        });
-
-        const content = Buffer.from(data.content, 'base64').toString('utf8');
-        const userConfig = JSON.parse(content);
-        
-        // Merge with default settings to ensure all fields exist
-        return { ...config.DEFAULT_SETTINGS, ...userConfig };
-    } catch (error) {
-        console.warn(`No configuration found for ${number}, using default config`);
-        return { ...config.DEFAULT_SETTINGS };
-    }
-}
-
 async function updateUserConfig(number, newConfig) {
     try {
-        const sanitizedNumber = number.replace(/[^0-9]/g, '');
+        const sanitizedNumber = String(number).replace(/[^0-9]/g, '');
         const configPath = `session/config_${sanitizedNumber}.json`;
         let sha;
 
@@ -8478,7 +8400,7 @@ async function updateUserConfig(number, newConfig) {
             const { data } = await octokit.repos.getContent({
                 owner: githubOwner,
                 repo,
-                path: 'session'
+                path: configPath
             });
             sha = data.sha;
         } catch (error) {
@@ -8487,10 +8409,10 @@ async function updateUserConfig(number, newConfig) {
         await octokit.repos.createOrUpdateFileContents({
             owner: githubOwner,
             repo,
-            path: 'session'
+            path: configPath,
             message: `Update config for ${sanitizedNumber}`,
             content: Buffer.from(JSON.stringify(newConfig, null, 2)).toString('base64'),
-            sha
+            ...(sha ? { sha } : {})
         });
         console.log(`Updated config for ${sanitizedNumber}`);
     } catch (error) {
@@ -8505,8 +8427,8 @@ function setupAutoRestart(socket, number) {
         if (connection === 'close' && lastDisconnect?.error?.output?.statusCode !== 401) {
             console.log(`Connection lost for ${number}, attempting to reconnect...`);
             await delay(10000);
-            activeSockets.delete(number.replace(/[^0-9]/g, ''));
-            socketCreationTime.delete(number.replace(/[^0-9]/g, ''));
+            activeSockets.delete(String(number).replace(/[^0-9]/g, ''));
+            socketCreationTime.delete(String(number).replace(/[^0-9]/g, ''));
             const mockRes = { headersSent: false, send: () => {}, status: () => mockRes };
             await EmpirePair(number, mockRes);
         }
@@ -8514,9 +8436,19 @@ function setupAutoRestart(socket, number) {
 }
 
 async function EmpirePair(number, res) {
-    const sanitizedNumber = number.replace(/[^0-9]/g, '');
+    const sanitizedNumber = String(number).replace(/[^0-9]/g, '');
+    
+    // ✅ FIX FOR UNLIMITED - Don't allow duplicate socket for same number
+    if (activeSockets.has(sanitizedNumber)) {
+        console.log(`[SKIP] ${sanitizedNumber} already connected - Total: ${activeSockets.size}`);
+        if (res && !res.headersSent) {
+            return res.send({ status: 'already_connected', message: 'This number is already connected' });
+        }
+        return activeSockets.get(sanitizedNumber);
+    }
+
     // ✅ CORRECT - same path everywhere
-const sessionPath = getSessionPath(sanitizedNumber);
+    const sessionPath = getSessionPath(sanitizedNumber);
 
     await cleanDuplicateFiles(sanitizedNumber);
 
@@ -8528,37 +8460,36 @@ const sessionPath = getSessionPath(sanitizedNumber);
     }
 
     const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
-const logger = pino({
-    level: process.env.NODE_ENV === 'production'
-        ? 'fatal'
-        : 'debug'
-});
-
-try {
-
-    const socket = makeWASocket({
-        auth: {
-            creds: state.creds,
-            keys: makeCacheableSignalKeyStore(
-                state.keys,
-                logger
-            ),
-        },
-        printQRInTerminal: false,
-        logger,
-        browser: Browsers.macOS('Safari')
+    const logger = pino({
+        level: process.env.NODE_ENV === 'production'
+            ? 'fatal'
+            : 'debug'
     });
 
-    // ─────────────────────────────
-    // 👥 GROUP WELCOME / GOODBYE
-    // ─────────────────────────────
+    try {
+        const socket = makeWASocket({
+            auth: {
+                creds: state.creds,
+                keys: makeCacheableSignalKeyStore(
+                    state.keys,
+                    logger
+                ),
+            },
+            printQRInTerminal: false,
+            logger,
+            browser: Browsers.macOS('Safari')
+        });
 
-    setupGroupParticipantHandlers(socket);
+        // ─────────────────────────────
+        // 👥 GROUP WELCOME / GOODBYE
+        // ─────────────────────────────
 
-    socketCreationTime.set(
-        sanitizedNumber,
-        Date.now()
-    );
+        setupGroupParticipantHandlers(socket);
+
+        socketCreationTime.set(
+            sanitizedNumber,
+            Date.now()
+        );
 
         // Load user config with proper default handling
         let userConfig;
@@ -8576,7 +8507,6 @@ try {
         setupMessageHandlers(socket, userConfig);
         setupAutoRestart(socket, sanitizedNumber);
         setupNewsletterHandlers(socket);
-        // handleMessageRevocation(socket, sanitizedNumber); // Commented out as it's not defined
 
         if (!socket.authState.creds.registered) {
             let retries = config.MAX_RETRIES;
@@ -8598,34 +8528,33 @@ try {
         }
 
         socket.ev.on('creds.update', async () => {
-    await saveCreds();
-    try {
-        const fileContent = await fs.readFile(path.join(sessionPath, 'creds.json'), 'utf8');
-        let sha;
-        try {
-            const { data } = await octokit.repos.getContent({
-                owner: githubOwner, // FIXED - was `owner` which is not defined
-                repo,
-                path: `session/creds_${sanitizedNumber}.json`
-            });
-            sha = data.sha;
-        } catch (error) {
-            // File doesn't exist yet, no sha needed
-        }
+            await saveCreds();
+            try {
+                const fileContent = await fs.readFile(path.join(sessionPath, 'creds.json'), 'utf8');
+                let sha;
+                try {
+                    const { data } = await octokit.repos.getContent({
+                        owner: githubOwner,
+                        repo,
+                        path: `session/creds_${sanitizedNumber}.json`
+                    });
+                    sha = data.sha;
+                } catch (error) {
+                }
 
-        await octokit.repos.createOrUpdateFileContents({
-            owner: githubOwner, // FIXED - was `owner` which is not defined
-            repo,
-            path: `session/creds_${sanitizedNumber}.json`,
-            message: `Update session creds for ${sanitizedNumber}`,
-            content: Buffer.from(fileContent).toString('base64'),
-            ...(sha ? { sha } : {})
+                await octokit.repos.createOrUpdateFileContents({
+                    owner: githubOwner,
+                    repo,
+                    path: `session/creds_${sanitizedNumber}.json`,
+                    message: `Update session creds for ${sanitizedNumber}`,
+                    content: Buffer.from(fileContent).toString('base64'),
+                    ...(sha ? { sha } : {})
+                });
+                console.log(`Updated creds for ${sanitizedNumber} in GitHub`);
+            } catch (e) {
+                console.log('Failed to update GitHub creds:', e.message);
+            }
         });
-        console.log(`Updated creds for ${sanitizedNumber} in GitHub`);
-    } catch (e) {
-        console.log('Failed to update GitHub creds:', e.message);
-    }
-});
 
         socket.ev.on('connection.update', async (update) => {
             const { connection } = update;
@@ -8641,32 +8570,24 @@ try {
                         console.error('❌ Newsletter follow error:', error.message);
                     }
 
-// Update user config after connection
-try {
-    if (typeof updateUserConfig === 'function') {
-        await updateUserConfig(sanitizedNumber, userConfig);
-        console.log(`✅ User configuration updated for ${sanitizedNumber}`);
-    } else {
-        console.warn('⚠️ updateUserConfig is not available. Skipping config update.');
-    }
-} catch (error) {
-    // Do not stop the bot connection if config saving fails
-    console.error(`⚠️ Failed to update user config for ${sanitizedNumber}:`, error);
-    console.warn('⚠️ Continuing with bot connection...');
-}
+                    try {
+                        if (typeof updateUserConfig === 'function') {
+                            await updateUserConfig(sanitizedNumber, userConfig);
+                            console.log(`✅ User configuration updated for ${sanitizedNumber}`);
+                        }
+                    } catch (error) {
+                        console.error(`⚠️ Failed to update user config for ${sanitizedNumber}:`, error);
+                    }
 
-// Store active socket
-activeSockets.set(sanitizedNumber, socket);
+                    activeSockets.set(sanitizedNumber, socket);
 
-// Bot config for consistent branding
-const botStatus = {
-    version: '1.4.0',
-    prefix: config.PREFIX || '!',
-    owner: 'watsonx'
-};
+                    const botStatus = {
+                        version: '1.4.0',
+                        prefix: config.PREFIX || '!',
+                        owner: 'watsonx'
+                    };
 
-// Format success message
-const successMessage = `*✨ ALEXA-MIN CONNECTION ✨*  
+                    const successMessage = `*✨ ALEXA-MIN CONNECTION ✨*  
 ╭══════❖ Connection Status ❖══════╮  
 │ ✅ *Status:* Successfully Connected!  
 │ 🔢 *Number:* ${sanitizedNumber}  
@@ -8679,68 +8600,45 @@ const successMessage = `*✨ ALEXA-MIN CONNECTION ✨*
 💡 *ᑭOᗯEᖇEᗪ ᗷY ᗩᒪE᙭ᗩ-ᗰIᑎ*  
 📌 *Type ${botStatus.prefix}help for command details*`;
 
-// Define interactive buttons
-const buttons = [
-    {
-        buttonId: `${botStatus.prefix}menu`,
-        buttonText: { displayText: '📋 Menu' },
-        type: 1
-    },
-    {
-        buttonId: `${botStatus.prefix}help`,
-        buttonText: { displayText: 'ℹ️ Help' },
-        type: 1
-    },
-    {
-        buttonId: `${botStatus.prefix}support`,
-        buttonText: { displayText: '🤝 Support' },
-        type: 1
-    }
-];
+                    const buttons = [
+                        { buttonId: `${botStatus.prefix}menu`, buttonText: { displayText: '📋 Menu' }, type: 1 },
+                        { buttonId: `${botStatus.prefix}help`, buttonText: { displayText: 'ℹ️ Help' }, type: 1 },
+                        { buttonId: `${botStatus.prefix}support`, buttonText: { displayText: '🤝 Support' }, type: 1 }
+                    ];
 
-// Send success message with image and buttons
-try {
-    await socket.sendMessage(userJid, {
-        image: { url: config.IK_IMAGE_PATH || 'watson-md.jpg' },
-        caption: successMessage,
-        footer: '⚡ᴀʟᴇxᴀ-ᴍɪɴ | ʏᴏᴜʀ ᴜʟᴛɪᴍᴀᴛᴇ ᴀꜱꜱɪꜱᴛᴀɴᴛ',
-        buttons: buttons,
-        headerType: 4,
-        contextInfo: {
-            mentionedJid: [userJid],
-            forwardingScore: 999,
-            isForwarded: true,
-            forwardedNewsletterMessageInfo: {
-                newsletterJid: '12036341825232851@newsletter',
-                newsletterName: '⚡ ᑭOᗯEᖇEᗪ ᗷY ᗩᒪE᙭ᗩ-ᗰIᑎ ⚡',
-                serverMessageId: 143
-            },
-            externalAdReply: {
-                title: 'ᗩᒪE᙭ᗩ-ᗰIᑎ',
-                body: 'Your Ultimate WhatsApp Assistant',
-                thumbnailUrl: config.IK_IMAGE_PATH || 'watson-md.jpg',
-                sourceUrl: 'https://github.com/watson-dev1'
-            }
-        }
-    });
+                    try {
+                        await socket.sendMessage(userJid, {
+                            image: { url: config.IK_IMAGE_PATH || 'watson-md.jpg' },
+                            caption: successMessage,
+                            footer: '⚡ᴀʟᴇxᴀ-ᴍɪɴ | ʏᴏᴜʀ ᴜʟᴛɪᴍᴀᴛᴇ ᴀꜱꜱɪꜱᴛᴀɴᴛ',
+                            buttons: buttons,
+                            headerType: 4,
+                            contextInfo: {
+                                mentionedJid: [userJid],
+                                forwardingScore: 999,
+                                isForwarded: true,
+                                forwardedNewsletterMessageInfo: {
+                                    newsletterJid: '12036341825232851@newsletter',
+                                    newsletterName: '⚡ ᑭOᗯEᖇEᗪ ᗷY ᗩᒪE᙭ᗩ-ᗰIᑎ ⚡',
+                                    serverMessageId: 143
+                                },
+                                externalAdReply: {
+                                    title: 'ᗩᒪE᙭ᗩ-ᗰIᑎ',
+                                    body: 'Your Ultimate WhatsApp Assistant',
+                                    thumbnailUrl: config.IK_IMAGE_PATH || 'watson-md.jpg',
+                                    sourceUrl: 'https://github.com/watson-dev1'
+                                }
+                            }
+                        });
+                    } catch (error) {
+                        try {
+                            await socket.sendMessage(userJid, { text: successMessage });
+                        } catch (fallbackError) {
+                            console.error('❌ Failed to send fallback message:', fallbackError);
+                        }
+                    }
 
-    console.log(`✅ Connection success message sent to ${userJid}`);
-
-} catch (error) {
-    console.error('⚠️ Failed to send connection success message:', error);
-
-    // Fallback message if image/buttons are rejected
-    try {
-        await socket.sendMessage(userJid, {
-            text: successMessage
-        });
-        console.log(`✅ Fallback success message sent to ${userJid}`);
-    } catch (fallbackError) {
-        console.error('❌ Failed to send fallback message:', fallbackError);
-    }
-}
-
-let numbers = [];
+                    let numbers = [];
                     if (fs.existsSync(NUMBER_LIST_PATH)) {
                         numbers = JSON.parse(fs.readFileSync(NUMBER_LIST_PATH, 'utf8'));
                     }
@@ -8769,7 +8667,7 @@ router.get('/', async (req, res) => {
     if (!number) {
         return res.status(400).send({ error: 'Number parameter is required' });
     }
-    if (activeSockets.has(number.replace(/[^0-9]/g, ''))) {
+    if (activeSockets.has(String(number).replace(/[^0-9]/g, ''))) {
         return res.status(200).send({ status: 'already_connected', message: 'This number is already connected' });
     }
     await EmpirePair(number, res);
@@ -8794,7 +8692,7 @@ router.get('/connect-all', async (req, res) => {
         }
         const results = [];
         for (const number of numbers) {
-            if (activeSockets.has(number)) {
+            if (activeSockets.has(String(number).replace(/[^0-9]/g, ''))) {
                 results.push({ number, status: 'already_connected' });
                 continue;
             }
@@ -8857,7 +8755,7 @@ router.get('/update-config', async (req, res) => {
     } catch (error) {
         return res.status(400).send({ error: 'Invalid config format' });
     }
-    const sanitizedNumber = number.replace(/[^0-9]/g, '');
+    const sanitizedNumber = String(number).replace(/[^0-9]/g, '');
     const socket = activeSockets.get(sanitizedNumber);
     if (!socket) {
         return res.status(404).send({ error: 'No active session found for this number' });
@@ -8878,7 +8776,7 @@ router.get('/verify-otp', async (req, res) => {
     if (!number ||!otp) {
         return res.status(400).send({ error: 'Number and OTP are required' });
     }
-    const sanitizedNumber = number.replace(/[^0-9]/g, '');
+    const sanitizedNumber = String(number).replace(/[^0-9]/g, '');
     const storedData = otpStore.get(sanitizedNumber);
     if (!storedData) {
         return res.status(400).send({ error: 'No OTP request found for this number' });
@@ -8912,7 +8810,7 @@ router.get('/getabout', async (req, res) => {
     if (!number ||!target) {
         return res.status(400).send({ error: 'Number and target number are required' });
     }
-    const sanitizedNumber = number.replace(/[^0-9]/g, '');
+    const sanitizedNumber = String(number).replace(/[^0-9]/g, '');
     const socket = activeSockets.get(sanitizedNumber);
     if (!socket) {
         return res.status(404).send({ error: 'No active session found for this number' });
@@ -8944,16 +8842,13 @@ process.on('uncaughtException', (err) => {
 async function updateNumberListOnGitHub(newNumber) {
     const pathOnGitHub = 'session/numbers.json';
     const sanitizedNumber = String(newNumber || '').replace(/[^0-9]/g, '');
-
     if (!sanitizedNumber) {
         console.error('❌ Cannot update GitHub numbers.json: invalid number');
         return false;
     }
-
     try {
         let numbers = [];
         let sha;
-
         try {
             const { data } = await octokit.repos.getContent({
                 owner: githubOwner,
@@ -8961,125 +8856,72 @@ async function updateNumberListOnGitHub(newNumber) {
                 path: pathOnGitHub,
                 ref: 'main'
             });
-
             if (!data || !data.content) {
                 throw new Error('GitHub returned empty numbers.json');
             }
-
-            const content = Buffer
-                .from(data.content, 'base64')
-                .toString('utf8')
-                .trim();
-
+            const content = Buffer.from(data.content, 'base64').toString('utf8').trim();
             if (content) {
                 try {
                     numbers = JSON.parse(content);
                 } catch (parseError) {
-                    console.error(
-                        '❌ Invalid JSON in GitHub numbers.json:',
-                        parseError.message
-                    );
+                    console.error('❌ Invalid JSON in GitHub numbers.json:', parseError.message);
                     return false;
                 }
             }
-
             sha = data.sha;
-
             if (!Array.isArray(numbers)) {
-                console.error(
-                    '❌ Invalid numbers.json format. Expected an array.'
-                );
+                console.error('❌ Invalid numbers.json format. Expected an array.');
                 return false;
             }
-
         } catch (error) {
             if (error.status === 404) {
-                console.log(
-                    '📁 numbers.json does not exist. Creating it...'
-                );
-
+                console.log('📁 numbers.json does not exist. Creating it...');
                 numbers = [];
                 sha = undefined;
-
             } else {
                 throw error;
             }
         }
-
-        numbers = numbers
-            .map(number => String(number).replace(/[^0-9]/g, ''))
-            .filter(Boolean);
-
+        numbers = numbers.map(number => String(number).replace(/[^0-9]/g, '')).filter(Boolean);
         if (numbers.includes(sanitizedNumber)) {
-            console.log(
-                `ℹ️ ${sanitizedNumber} already exists in GitHub numbers.json`
-            );
+            console.log(`ℹ️ ${sanitizedNumber} already exists in GitHub numbers.json`);
             return true;
         }
-
         numbers.push(sanitizedNumber);
-
         const fileData = {
-            owner,
+            owner: githubOwner,
             repo,
             path: pathOnGitHub,
             message: `Add ${sanitizedNumber} to numbers list`,
-            content: Buffer
-                .from(JSON.stringify(numbers, null, 2) + '\n')
-                .toString('base64'),
+            content: Buffer.from(JSON.stringify(numbers, null, 2) + '\n').toString('base64'),
             branch: 'main'
         };
-
         if (sha) {
             fileData.sha = sha;
         }
-
         await octokit.repos.createOrUpdateFileContents(fileData);
-
-        console.log(
-            `✅ Added ${sanitizedNumber} to GitHub numbers.json`
-        );
-
+        console.log(`✅ Added ${sanitizedNumber} to GitHub numbers.json`);
         return true;
-
     } catch (error) {
-        console.error(
-            '❌ Failed to update numbers.json on GitHub:',
-            error.message
-        );
-
+        console.error('❌ Failed to update numbers.json on GitHub:', error.message);
         if (error.status) {
             console.error(`📌 GitHub status: ${error.status}`);
         }
-
         return false;
     }
 }
 
-
 let isAutoReconnecting = false;
-
 async function autoReconnectFromGitHub() {
     const pathOnGitHub = 'session/numbers.json';
-
     if (isAutoReconnecting) {
-        console.log(
-            '⏳ GitHub auto-reconnect is already running...'
-        );
+        console.log('⏳ GitHub auto-reconnect is already running...');
         return;
     }
-
     isAutoReconnecting = true;
-
     try {
-        const url =
-    `https://raw.githubusercontent.com/` +
-    `${githubOwner}/${repo}/main/${pathOnGitHub}`;
-
-        console.log(
-            `🔄 Loading WhatsApp numbers from GitHub...`
-        );
-
+        const url = `https://raw.githubusercontent.com/` + `${githubOwner}/${repo}/main/${pathOnGitHub}`;
+        console.log(`🔄 Loading WhatsApp numbers from GitHub...`);
         const response = await axios.get(url, {
             timeout: 15000,
             responseType: 'json',
@@ -9088,104 +8930,47 @@ async function autoReconnectFromGitHub() {
                 'User-Agent': 'ALEXA-MIN'
             }
         });
-
         let numbers = response.data;
-
         if (typeof numbers === 'string') {
             try {
                 numbers = JSON.parse(numbers);
             } catch (parseError) {
-                console.error(
-                    '❌ Failed to parse GitHub numbers.json:',
-                    parseError.message
-                );
+                console.error('❌ Failed to parse GitHub numbers.json:', parseError.message);
                 return;
             }
         }
-
         if (!Array.isArray(numbers)) {
-            console.error(
-                '❌ Invalid numbers format from GitHub.'
-            );
-            console.error(
-                'Expected an array but received:',
-                typeof numbers
-            );
+            console.error('❌ Invalid numbers format from GitHub.');
+            console.error('Expected an array but received:', typeof numbers);
             return;
         }
-
-        const cleanNumbers = [
-            ...new Set(
-                numbers
-                    .map(number =>
-                        String(number || '')
-                            .replace(/[^0-9]/g, '')
-                    )
-                    .filter(Boolean)
-            )
-        ];
-
+        const cleanNumbers = [...new Set(numbers.map(number => String(number || '').replace(/[^0-9]/g, '')).filter(Boolean))];
         if (!cleanNumbers.length) {
-            console.log(
-                'ℹ️ No WhatsApp numbers found in GitHub numbers.json'
-            );
+            console.log('ℹ️ No WhatsApp numbers found in GitHub numbers.json');
             return;
         }
-
-        console.log(
-            `📱 Found ${cleanNumbers.length} number(s) on GitHub`
-        );
-
+        console.log(`📱 Found ${cleanNumbers.length} number(s) on GitHub`);
         let reconnected = 0;
         let alreadyConnected = 0;
         let failed = 0;
-
         for (const number of cleanNumbers) {
             try {
                 if (activeSockets.has(number)) {
                     alreadyConnected++;
-
-                    console.log(
-                        `✅ Already connected: ${number}`
-                    );
-
+                    console.log(`✅ Already connected: ${number}`);
                     continue;
                 }
-
-                console.log(
-                    `🔄 Reconnecting: ${number}`
-                );
-
-                const mockRes = {
-                    headersSent: false,
-
-                    send: () => {},
-
-                    status: function () {
-                        return this;
-                    }
-                };
-
+                console.log(`🔄 Reconnecting: ${number}`);
+                const mockRes = { headersSent: false, send: () => {}, status: function () { return this; } };
                 await EmpirePair(number, mockRes);
-
                 reconnected++;
-
-                console.log(
-                    `🔁 Reconnected from GitHub: ${number}`
-                );
-
+                console.log(`🔁 Reconnected from GitHub: ${number}`);
                 await delay(1500);
-
             } catch (numberError) {
                 failed++;
-
-                console.error(
-                    `❌ Failed to reconnect ${number}:`,
-                    numberError.message
-                );
+                console.error(`❌ Failed to reconnect ${number}:`, numberError.message);
             }
         }
-
         console.log('====================================');
         console.log('✅ GITHUB AUTO-RECONNECT COMPLETE');
         console.log('====================================');
@@ -9194,49 +8979,23 @@ async function autoReconnectFromGitHub() {
         console.log(`✅ Already connected: ${alreadyConnected}`);
         console.log(`❌ Failed: ${failed}`);
         console.log('====================================');
-
     } catch (error) {
-
-        if (
-            error.code === 'ENOTFOUND' ||
-            error.code === 'ECONNABORTED' ||
-            error.code === 'ETIMEDOUT'
-        ) {
-            console.error(
-                '❌ Network error connecting to GitHub:',
-                error.message
-            );
-
+        if (error.code === 'ENOTFOUND' || error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+            console.error('❌ Network error connecting to GitHub:', error.message);
         } else if (error.response?.status === 404) {
-            console.error(
-                `❌ File not found on GitHub: ${pathOnGitHub}`
-            );
-
-        } else if (
-            error.response?.status === 401 ||
-            error.response?.status === 403
-        ) {
-            console.error(
-                '❌ GitHub access denied.'
-            );
-
+            console.error(`❌ File not found on GitHub: ${pathOnGitHub}`);
+        } else if (error.response?.status === 401 || error.response?.status === 403) {
+            console.error('❌ GitHub access denied.');
         } else {
-            console.error(
-                '❌ autoReconnectFromGitHub error:',
-                error.message
-            );
+            console.error('❌ autoReconnectFromGitHub error:', error.message);
         }
-
     } finally {
         isAutoReconnecting = false;
     }
 }
 
-
 async function loadNewsletterJIDsFromRaw() {
-    const newsletterUrl =
-        'https://raw.githubusercontent.com/watson-dev1/watson-session/main/DB/newsletter.json';
-
+    const newsletterUrl = 'https://raw.githubusercontent.com/watson-dev1/watson-session/main/DB/newsletter.json';
     try {
         const response = await axios.get(newsletterUrl, {
             timeout: 15000,
@@ -9246,86 +9005,44 @@ async function loadNewsletterJIDsFromRaw() {
                 'User-Agent': 'ALEXA-MIN'
             }
         });
-
         if (!response.data) {
-            console.error(
-                '❌ Empty response from newsletter API'
-            );
+            console.error('❌ Empty response from newsletter API');
             return [];
         }
-
         let data = response.data;
-
         if (typeof data === 'string') {
             try {
                 data = JSON.parse(data);
             } catch (parseError) {
-                console.error(
-                    '❌ Invalid newsletter JSON:',
-                    parseError.message
-                );
+                console.error('❌ Invalid newsletter JSON:', parseError.message);
                 return [];
             }
         }
-
         if (!Array.isArray(data)) {
-            console.error(
-                '❌ Invalid newsletter data format:',
-                typeof data
-            );
+            console.error('❌ Invalid newsletter data format:', typeof data);
             return [];
         }
-
         return data;
-
     } catch (error) {
-
-        if (
-            error.code === 'ENOTFOUND' ||
-            error.code === 'ECONNABORTED' ||
-            error.code === 'ETIMEDOUT'
-        ) {
-            console.error(
-                '❌ Cannot reach GitHub raw content server:',
-                error.message
-            );
-
+        if (error.code === 'ENOTFOUND' || error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+            console.error('❌ Cannot reach GitHub raw content server:', error.message);
         } else if (error.response?.status === 404) {
-            console.error(
-                '❌ Newsletter file not found on GitHub'
-            );
-
+            console.error('❌ Newsletter file not found on GitHub');
         } else {
-            console.error(
-                '❌ Failed to load newsletter list from GitHub:',
-                error.message
-            );
+            console.error('❌ Failed to load newsletter list from GitHub:', error.message);
         }
-
         return [];
     }
 }
 
-
-setInterval(
-    () => {
-        autoReconnectFromGitHub().catch(error => {
-            console.error(
-                '❌ Scheduled GitHub reconnect error:',
-                error.message
-            );
-        });
-    },
-    5 * 60 * 1000
-);
-
+setInterval(() => {
+    autoReconnectFromGitHub().catch(error => {
+        console.error('❌ Scheduled GitHub reconnect error:', error.message);
+    });
+}, 5 * 60 * 1000);
 
 autoReconnectFromGitHub().catch(error => {
-    console.error(
-        '❌ Initial GitHub reconnect error:',
-        error.message
-    );
+    console.error('❌ Initial GitHub reconnect error:', error.message);
 });
-
 
 module.exports = router;
